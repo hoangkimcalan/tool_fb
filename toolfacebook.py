@@ -140,29 +140,52 @@ CONTENT_POST = [
     "Thời tiết hôm này thật thoải mái và dễ chịu, tâm trạng mình cũng rất tốt, cuối cùng mình cũng đạt được mục tiêu của mình. Tiếp tục cố gắng cho những điều tốt đẹp phía trước!"
 ]
 
+# lưu cookie lại mỗi khi đăng nhập thành công
 async def save_cookies(browser):
     """Lưu cookies vào file JSON"""
     cookies = browser.get_cookies()
     if cookies:
+        # Lọc chỉ giữ cookie chưa hết hạn
+        valid_cookies = [cookie for cookie in cookies if 'expiry' not in cookie or cookie['expiry'] > time.time()]
+        
         with open(COOKIE_FILE, "w") as file:
-            json.dump(cookies, file)
+            json.dump(valid_cookies, file, indent=4)
+
         log_message("Cookies saved successfully!")
     else:
         log_message("No cookies to save.", logging.ERROR)
 
+# load cookie từ file JSON để tránh đăng nhập lại
 async def load_cookies(browser):
     """Nạp cookies từ file JSON"""
     if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 0:
         try:
             with open(COOKIE_FILE, "r") as file:
                 cookies = json.load(file)
-                for cookie in cookies:
+            
+            # Lọc chỉ giữ cookie chưa hết hạn
+            valid_cookies = [cookie for cookie in cookies if 'expiry' not in cookie or cookie['expiry'] > time.time()]
+            
+            if valid_cookies:
+                for cookie in valid_cookies:
                     browser.add_cookie(cookie)
-            log_message("Cookies loaded successfully!")
+
+                # Nếu có cookie hết hạn, cập nhật lại file JSON
+                if len(valid_cookies) < len(cookies):
+                    with open(COOKIE_FILE, "w") as file:
+                        json.dump(valid_cookies, file, indent=4)
+                    log_message("Expired cookies removed and updated JSON file.")
+
+                log_message("Valid cookies loaded successfully!")
+            else:
+                log_message("All cookies have expired. Deleting cookie file...", logging.WARNING)
+                os.remove(COOKIE_FILE)
+
         except json.JSONDecodeError:
             log_message("Corrupted cookie file. Deleting...", logging.ERROR)
             os.remove(COOKIE_FILE)
 
+# Hàm đăng nhập Facebook
 async def login(username, password, code_2fa, browser):
     try:
         """Hàm đăng nhập Facebook với async/await"""
@@ -183,6 +206,7 @@ async def login(username, password, code_2fa, browser):
     except Exception as e:
         log_message(f"Login failed: {e}",logging.ERROR)
 
+# Hàm thả cảm xúc cho bài viết
 async def like_post(browser, actions):
     '''Like, Yêu thích, Thương thương, Haha, Wow, Buồn, Phẫn nộ'''
     try:
@@ -220,6 +244,7 @@ async def like_post(browser, actions):
         traceback.print_exc()
         pass
 
+# Hàm bình luận bài viết
 async def comment_post(browser, actions):
     try:
         wait = WebDriverWait(browser, 5)
@@ -262,7 +287,8 @@ async def comment_post(browser, actions):
         traceback.print_exc()
         pass
     await asyncio.sleep(4)
-    
+
+# Hàm chia sẻ bài viết
 async def share_post(browser,actions):
     try:
         share_button = WebDriverWait(browser, 5).until(EC.presence_of_element_located((By.XPATH, "//div[@aria-label='Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn.'] | //div[@aria-label='Send this to friends or post it on your profile.']")))
@@ -287,7 +313,8 @@ async def share_post(browser,actions):
         log_message(f"Đã chia sẻ bài viết thành công")
     except Exception as err:
         log_message(f"err share {err}", logging.ERROR)
-        
+
+# Hàm xem video
 async def watch_videos(browser, actions):
     try:
         browser.get("https://www.facebook.com/watch/")
@@ -357,7 +384,8 @@ async def watch_videos(browser, actions):
         
     except Exception as err:
         log_message(f"err watch videos {err}", logging.ERROR)
-    
+
+# Hàm tạo bài viết mới
 async def post_news_feed(browser):
     try:
         await asyncio.sleep(random.uniform(5, 8))
@@ -395,6 +423,7 @@ async def post_news_feed(browser):
         traceback.print_exc()
         pass
 
+# Hàm xem danh sách bạn bè + send message cho bạn bè (random)
 async def list_friend(browser):
     try:
         list_friend = []
@@ -420,6 +449,7 @@ async def list_friend(browser):
         traceback.print_exc()
         pass
 
+# Hàm nhắn tin
 async def send_message(browser, link_user, content):
     try:
         browser.get(link_user)
@@ -462,8 +492,53 @@ async def send_message(browser, link_user, content):
     except Exception as err:
         log_message(f"err send_message {err}", logging.ERROR)
         traceback.print_exc()
-        pass 
+        pass
 
+
+# Hàm gửi lời mời kết bạn trong group
+async def add_friend(browser):
+    try:
+        browser.get("https://www.facebook.com/search/groups?q={}&filters=eyJwdWJsaWNfZ3JvdXBzOjAiOiJ7XCJuYW1lXCI6XCJwdWJsaWNfZ3JvdXBzXCIsXCJhcmdzXCI6XCJcIn0ifQ%3D%3D".format("tuyển dụng"))
+        await asyncio.sleep(random.uniform(2, 4))
+
+        groups_box = browser.find_elements(By.XPATH, '//a[@aria-hidden="true" and contains(@href, "/groups/")]')
+        link_group = random.choice(groups_box).get_attribute("href")
+        browser.get(link_group.rstrip("/") + "/members/near_you")
+        await asyncio.sleep(random.uniform(2, 4))
+        check_status = browser.find_element(By.CSS_SELECTOR,
+                                            "[class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w xeuugli xg83lxy x1h0ha7o x1120s5i x1nn3v0j']")
+        print('status:', check_status.text)
+        
+        
+        # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
+        current_scroll = browser.execute_script("return window.pageYOffset;")
+        target_scroll = current_scroll + random.randint(1000, 3500)
+        await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
+        
+        await asyncio.sleep(random.uniform(5, 8))
+        link_users = browser.find_elements(By.XPATH, "//a[@class='x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xt0psk2 xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1a2a7pz xkrqix3 x1sur9pj xzsf02u x1pd3egz']")
+        await asyncio.sleep(random.uniform(2, 4))
+        link_user = link_users[random.randint(10, len(link_users) - 1)]
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", link_user)
+        time.sleep(random.uniform(2, 3))
+        link_user.click()
+        await asyncio.sleep(random.uniform(8, 10))
+        try:
+            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Add friend']")
+        except:
+            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Thêm bạn bè']")
+        time.sleep(random.uniform(2, 3))
+        add_friend_buttons[len(add_friend_buttons) - 1].click()
+        time.sleep(random.uniform(2, 3))
+        log_message("Đã gửi lời mời kết bạn thành công!")
+        await send_message(browser, browser.current_url, "Chào bạn, mình là nhân sự bên timviec365, bạn cho mình hỏi là bạn đang đi tìm việc hay là bên tuyển dụng đó ạ? Nếu bạn đang cần tìm ứng viên hoặc đang cần tìm việc làm thì bạn lên trang web timviec365.vn tham khảo nhé.")
+        
+    except Exception as err:
+        log_message(f"err add_friend {err}", logging.ERROR)
+        traceback.print_exc()
+        pass
+
+# hàm lướt dạo facebook
 async def surf_facebook(id, title, browser):
     '''hàm này để lướt fb dạo
     trước tiên lướt fb, sau đó chọn 1 bài viết ngẫu nhiên để đọc cmt hoặc like hoặc share,
@@ -592,7 +667,8 @@ async def main():
             try:
                 # await surf_facebook("10502329", random.choice(COMMENTS), browser)
                 # await post_news_feed(browser)
-                await list_friend(browser)
+                # await list_friend(browser)
+                await add_friend(browser)
                 await asyncio.sleep(random.uniform(2400, 3600))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

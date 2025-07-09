@@ -534,6 +534,8 @@ def list_group():
         home = browser.find_element(By.XPATH, "//a[@aria-label='Home']")
     home.click()
     # pass
+    
+# def get_list_friend():
 
 def list_friend(id):
     list_friend = []

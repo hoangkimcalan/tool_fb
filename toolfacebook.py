@@ -639,14 +639,14 @@ async def main():
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
 
-        user_name = "0334388048"
-        pass_word = "239210"
+        user_name = "0969824645"
+        pass_word = "timviec365@/"
         code_2fa = ""
         id_chat = "10502329"
         
         if os.path.exists(COOKIE_FILE):
             await load_cookies(browser)
-            browser.refresh()  # Refresh lại trang để áp dụng cookies
+            browser.refresh()
             await asyncio.sleep(4)
 
         # Kiểm tra nếu vẫn cần đăng nhập

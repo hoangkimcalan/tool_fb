@@ -85,9 +85,6 @@ async def is_logged_in(browser):
         return False
 
 
-
-
-
 async def test_surf_facebook(browser):
     """Test chức năng lướt Facebook"""
     try:
@@ -99,7 +96,6 @@ async def test_surf_facebook(browser):
             target_scroll = current_scroll + random.randint(400, 600)
             await smooth_scroll(browser, current_scroll, target_scroll, duration=1.5)
             await asyncio.sleep(random.randint(5, 10))  # Chờ load bài viết, tránh lặp lại việc cuộn sau một thời gian cố định 
-            log_message(f"Scrolled {i+1}/5 times - Current position: {current_scroll}")
         
         log_message("Surf Facebook test completed!")
         
@@ -250,8 +246,6 @@ async def test_comment_post(browser, actions):
         if not comment_button:
             log_message("Không tìm thấy nút bình luận sau khi cuộn trang", logging.ERROR)
             return
-            
-        log_message(f"Tìm thấy nút bình luận: {comment_button}")
         
         # Scroll nút bình luận vào view
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", comment_button)
@@ -264,22 +258,20 @@ async def test_comment_post(browser, actions):
         # Chọn ngẫu nhiên một bình luận
         comment_text = random.choice(COMMENTS)
         await asyncio.sleep(random.uniform(2, 4))
-        log_message(f"Đang nhập bình luận: {comment_text}")
         
         # Tìm comment box để nhập text
         wait = WebDriverWait(browser, 10)
         comment_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
         await asyncio.sleep(1)
             
-            # Tìm thẻ p trong comment box
+        # Tìm thẻ p trong comment box
         p_tag = comment_box.find_element(By.TAG_NAME, "p")
         log_message(f"Tìm thấy p_tag: {p_tag}")
         await asyncio.sleep(2)
         actions.send_keys_to_element(p_tag, comment_text)
         await asyncio.sleep(random.uniform(2, 4))
         actions.send_keys(Keys.ENTER)
-        actions.perform()
-            
+        actions.perform()   
         log_message("Bình luận đã được gửi thành công!")
             
         await asyncio.sleep(2)
@@ -290,30 +282,141 @@ async def test_comment_post(browser, actions):
         traceback.print_exc()
 
 # Hàm chia sẻ bài viết
-async def share_post(browser,actions):
+async def test_share_post(browser, actions):
     try:
-        share_button = WebDriverWait(browser, 5).until(EC.presence_of_element_located((By.XPATH, "//div[@aria-label='Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn.'] | //div[@aria-label='Send this to friends or post it on your profile.']")))
-        log_message(f" Tìm thấy nút share: {share_button}")
-        browser.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", share_button)
+        # Tìm nút chia sẻ với logic cuộn trang
+        share_button = None
+        max_scroll = 10
         
+        # Cuộn trang để tìm nút chia sẻ
+        for i in range(max_scroll):
+            try:
+                share_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn." or @aria-label="Send this to friends or post it on your profile.") and @role="button"]')
+                for btn in share_buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        share_button = btn
+                        break
+                if share_button:
+                    break
+            except Exception as e:
+                log_message(f"Lỗi khi tìm nút chia sẻ lần {i+1}: {e}")
+                
+            # Nếu chưa tìm thấy, cuộn thêm
+            if not share_button:
+                browser.execute_script("window.scrollBy(0, 200);")
+                await asyncio.sleep(10)
+                
+        if not share_button:
+            return
+        
+        # Scroll nút chia sẻ vào view
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", share_button)
         await asyncio.sleep(2)
         
-        actions.move_to_element(share_button)
-        actions.click()
-        actions.perform()
+        # Click vào nút chia sẻ
+        try:
+            actions.move_to_element(share_button)
+            actions.click()
+            actions.perform()
+        except Exception as e:
+            # Fallback sang JavaScript click nếu ActionChains thất bại
+            try:
+                browser.execute_script("arguments[0].click();", share_button)
+            except Exception as e_inner:
+                return       
+        await asyncio.sleep(5)    
+        # Tìm và click nút "Chia sẻ ngay"
+        try:
+            share_now_button = WebDriverWait(browser, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[(@aria-label="Chia sẻ ngay" or @aria-label="Share now") and @role="button"]'))
+            )
+            # Click nút chia sẻ ngay
+            try:
+                actions.move_to_element(share_now_button)
+                actions.click()
+                actions.perform()
+            except Exception as e:
+                # Fallback sang JavaScript click
+                try:
+                    browser.execute_script("arguments[0].click();", share_now_button)
+                except Exception as e_inner:
+                    return
+            log_message("Đã chia sẻ bài viết thành công!")
+            await asyncio.sleep(random.uniform(2, 3))           
+        except Exception as e:
+            return        
+    except Exception as e:
+        traceback.print_exc()
+# Hàm xem video
+async def watch_videos(browser, actions):
+    try:
+        browser.get("https://www.facebook.com/watch/")
+        await asyncio.sleep(random.uniform(3, 6))
+        scroll_count_video = random.randint(6, 15)  # Số lần cuộn
+        while scroll_count_video > 0:
+            log_message(f"scroll_count_watch_video {scroll_count_video}")
+
+            await asyncio.sleep(random.uniform(4, 7))
+
+            # Lấy danh sách video
+            video_selected = WebDriverWait(browser, 10).until(EC.presence_of_all_elements_located(
+                (By.XPATH, "//div[@class='x1ey2m1c x9f619 xds687c x17qophe x10l6tqk x13vifvy x1ypdohk']")
+            ))
+
+            # Lọc video trong tầm nhìn
+            visible_videos = [video for video in video_selected if video.is_displayed()]
+            await asyncio.sleep(random.uniform(40, 60))
+
+            if visible_videos:
+                log_message(f"visible_videos: {visible_videos}")
+                current_video = visible_videos[0]
+
+                # Nếu scroll_count_video chia hết cho 7 hoặc 13 thì thực hiện hành động
+                if scroll_count_video % 7 == 0 or scroll_count_video % 13 == 0:
+                    if scroll_count_video % 7 == 0:
+                        await asyncio.sleep(random.uniform(5, 7))
+                        try:
+                            like_buttons = WebDriverWait(browser, 10).until(
+                                EC.presence_of_all_elements_located((By.XPATH, "//span[@data-ad-rendering-role='like_button'] | //span[@data-ad-rendering-role='thích_button']"))
+                            )
+                            
+                            if like_buttons and like_buttons[0].is_displayed():
+                                browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_buttons[0])
+                                await asyncio.sleep(random.uniform(1, 3))
+                                like_buttons[0].click()
+                                log_message("Liked the post video successfully!")
+                            else:
+                                log_message("Like button is not visible, skipping...")
+                        except Exception as e:
+                            log_message(f"Error clicking like button: {e}")
+
+                    elif scroll_count_video % 13 == 0:
+                        await test_share_post(browser, actions)
+                        await asyncio.sleep(random.uniform(3, 5))
+                        
+                    await asyncio.sleep(random.uniform(2, 5))
+
+                    # Sau khi like hoặc share, click vào video để lấy URL
+                    actions.move_to_element(current_video).click().perform()
+                    await asyncio.sleep(random.uniform(3, 5))
+                    
+                    # Lấy URL video đã tương tác
+                    video_url = browser.current_url
+                    log_message(f"current_url: {video_url}")
+
+            # Trừ lượt cuộn
+            scroll_count_video -= 1
+
+            # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
+            current_scroll = browser.execute_script("return window.pageYOffset;")
+            target_scroll = current_scroll + random.randint(600, 800)
+            await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
+
+            
+        log_message("Đã hoàn thành xem video Facebook")
         
-        await asyncio.sleep(5)
-        
-        share = browser.find_element(By.XPATH, "//div[@aria-label='Chia sẻ ngay'] | //div[@aria-label='Share now']")
-        log_message(f" Tìm thấy nút chia sẻ: {share}")
-        
-        actions.move_to_element(share)
-        actions.click()
-        actions.perform()
-        
-        log_message(f"Đã chia sẻ bài viết thành công")
     except Exception as err:
-        log_message(f"err share {err}", logging.ERROR)
+        log_message(f"err watch videos {err}", logging.ERROR)
 async def main():
     """Test các chức năng cơ bản"""
     try:
@@ -352,7 +455,6 @@ async def main():
         # 1. Test lướt Facebook
         await test_surf_facebook(browser)
         await asyncio.sleep(3)
-        
         # 2. Test thả reaction bài viết (bao gồm cả Like)
         await test_react_post(browser)
         await asyncio.sleep(3)
@@ -361,6 +463,10 @@ async def main():
         await asyncio.sleep(3)
         # 4. Test bình luận bài viết
         await test_comment_post(browser, ActionChains(browser))
+        #5. Chia sẻ bài viết
+        await test_surf_facebook(browser)
+        await asyncio.sleep(3)
+        await test_share_post(browser, ActionChains(browser))
         log_message("Test cơ bản hoàn thành!")
         log_message("Đăng nhập: OK")
         log_message("Lướt Facebook: OK") 

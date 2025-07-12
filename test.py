@@ -19,6 +19,17 @@ from utils import log_message, smooth_scroll, type_text_input
 # Constants
 COOKIE_FILE = "fb_cookies.json"
 
+# Danh sách các reaction có thể thả (cập nhật XPath mới)
+REACTIONS = [
+    {"name": "Like", "xpath": '//div[@aria-label="Thích" or @aria-label="Like"]'},
+    {"name": "Love", "xpath": '//div[@aria-label="Yêu thích" or @aria-label="Love"]'},
+    {"name": "Care", "xpath": '//div[@aria-label="Thương thương" or @aria-label="Care"]'},
+    {"name": "Haha", "xpath": '//div[@aria-label="Haha"]'},
+    {"name": "Wow", "xpath": '//div[@aria-label="Wow"]'},
+    {"name": "Sad", "xpath": '//div[@aria-label="Buồn" or @aria-label="Sad"]'},
+    {"name": "Angry", "xpath": '//div[@aria-label="Phẫn nộ" or @aria-label="Angry"]'}
+]
+
 async def load_cookies(browser):
     """Nạp cookies từ file JSON"""
     if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 0:
@@ -49,43 +60,7 @@ async def is_logged_in(browser):
     except Exception:
         return False
 
-async def test_like_post(browser):
-    """Test chức năng like bài viết với cải tiến"""
-    try:
-        log_message("Testing like post function...")
-        like_button = None
-        max_scroll = 10
-        for i in range(max_scroll):
-            like_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]')
-            for btn in like_buttons:
-                log_message(f"Check like button: displayed={btn.is_displayed()}, enabled={btn.is_enabled()}")
-                if btn.is_displayed() and btn.is_enabled():
-                    like_button = btn
-                    break
-            if like_button:
-                break
-            # Nếu chưa tìm thấy, cuộn thêm
-            browser.execute_script("window.scrollBy(0, 400);")
-            await asyncio.sleep(1)
-        if not like_button:
-            log_message("Không tìm thấy nút Like nào hiển thị và có thể click sau khi cuộn.")
-            return
-        log_message(f"Found like button: {like_button}")
-        # Scroll element vào view
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
-        await asyncio.sleep(1)
-        # Thử hover trước
-        actions = ActionChains(browser)
-        actions.move_to_element(like_button)
-        actions.perform()
-        await asyncio.sleep(1)
-        log_message("Hovered over like button successfully!")
-        # Thử click bằng JavaScript thay vì ActionChains
-        browser.execute_script("arguments[0].click();", like_button)
-        await asyncio.sleep(2)
-        log_message("Clicked like button successfully using JavaScript!")
-    except Exception as e:
-        log_message(f"Error in test_like_post: {e}", logging.ERROR)
+
 
 
 
@@ -95,11 +70,11 @@ async def test_surf_facebook(browser):
         log_message("Testing surf Facebook function...")
         
         # Cuộn trang vài lần để load thêm bài viết
-        for i in range(5):
+        for i in range(3):
             current_scroll = browser.execute_script("return window.pageYOffset;")
             target_scroll = current_scroll + random.randint(400, 600)
             await smooth_scroll(browser, current_scroll, target_scroll, duration=1.5)
-            await asyncio.sleep(3)  # Chờ load bài viết
+            await asyncio.sleep(random.randint(5, 10))  # Chờ load bài viết, tránh lặp lại việc cuộn sau một thời gian cố định 
             log_message(f"Scrolled {i+1}/5 times - Current position: {current_scroll}")
         
         log_message("Surf Facebook test completed!")
@@ -107,6 +82,122 @@ async def test_surf_facebook(browser):
     except Exception as e:
         log_message(f"Error in test_surf_facebook: {e}", logging.ERROR)
 
+async def test_react_post(browser):
+    """Test chức năng thả reaction cho bài viết (bao gồm cả Like)"""
+    try:
+        # Tìm nút Like để hover và hiện reaction panel
+        like_button = None
+        max_scroll = 10
+        # Cuộn trang để tìm nút Like
+        for i in range(max_scroll):
+            like_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]')
+            for btn in like_buttons:
+                if btn.is_displayed() and btn.is_enabled():
+                    like_button = btn
+                    break
+            if like_button:
+                break
+            # Nếu chưa tìm thấy, cuộn thêm
+            browser.execute_script("window.scrollBy(0, 200);")
+            await asyncio.sleep(10)
+            
+        if not like_button:
+            return
+        
+        # Scroll nút Like vào view để đảm bảo có thể click
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+        await asyncio.sleep(2)
+        
+        # Chọn ngẫu nhiên một reaction (bao gồm cả Like)
+        selected_reaction = random.choice(REACTIONS)
+        log_message(f"Selected reaction: {selected_reaction['name']}")
+        
+        # Nếu chọn Like, click trực tiếp vào nút Like
+        if selected_reaction['name'] == 'Like':
+            try:
+                browser.execute_script("arguments[0].click();", like_button)
+                await asyncio.sleep(random.uniform(2, 3))
+                return
+            except:
+                like_button.click()
+                await asyncio.sleep(random.uniform(2, 3))
+                return
+        
+        # Nếu chọn reaction khác, hover để hiện reaction panel
+        actions = ActionChains(browser)
+        actions.move_to_element(like_button)
+        actions.perform()
+        await asyncio.sleep(3)  # Chờ để hover có hiệu ứng
+        
+        await asyncio.sleep(random.uniform(2, 3))
+        
+        # Tìm reaction button chính xác hơn
+        reaction_button = None
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            try:
+                # Thử tìm các div có role="button" và aria-label chính xác
+                exact_xpath = f'//div[@role="button" and @aria-label="{selected_reaction["name"]}"]'
+                reaction_button = WebDriverWait(browser, 3).until(
+                    EC.presence_of_element_located((By.XPATH, exact_xpath))
+                )
+                break
+                
+            except:
+                try:
+                    # Tìm trong reaction panel (thường có class hoặc role đặc biệt)
+                    # Hoặc tìm các element có aria-label chứa tên reaction
+                    panel_reactions = browser.find_elements(By.XPATH, f'//div[contains(@aria-label, "{selected_reaction["name"]}")]')
+                    for reaction in panel_reactions:
+                        aria_label = reaction.get_attribute('aria-label')
+                        if aria_label and selected_reaction["name"].lower() in aria_label.lower():
+                             # Thêm điều kiện kiểm tra kích thước để lọc ra các phần tử không phải nút bấm
+                            size = reaction.size
+                            if size['width'] > 0 and size['height'] > 0 and reaction.is_displayed() and reaction.is_enabled():
+                                reaction_button = reaction
+                                break
+                    if reaction_button:
+                        break
+                        
+                except Exception as e:
+                    pass # Continue to next attempt
+                
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2)
+                # Thử hover lại để panel hiển thị lại
+                actions.move_to_element(like_button)
+                actions.perform()
+                await asyncio.sleep(2)
+        
+        if not reaction_button:
+            return
+            
+        # Kiểm tra kích thước và trạng thái cuối cùng trước khi click
+        size = reaction_button.size
+        
+        if size['width'] > 0 and size['height'] > 0 and reaction_button.is_displayed() and reaction_button.is_enabled():
+            # Scroll reaction button vào view
+            browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reaction_button)
+            await asyncio.sleep(1) # Chờ một chút sau khi scroll
+
+            try:
+                # Tạo một ActionChains mới hoặc đảm bảo đã reset các hành động trước đó
+                click_actions = ActionChains(browser)
+                click_actions.move_to_element(reaction_button) # Di chuyển chuột đến element
+                click_actions.click() # Thực hiện hành động click
+                click_actions.perform() # Thực thi chuỗi hành động
+            except Exception as e:
+                # Fallback sang JavaScript click nếu ActionChains thất bại
+                try:
+                    browser.execute_script("arguments[0].click();", reaction_button)
+                except Exception as e_inner:
+                    traceback.print_exc()
+            
+            await asyncio.sleep(random.uniform(2, 3))  # Chờ để tránh spam
+            
+    except Exception as e:
+        traceback.print_exc()
 async def main():
     """Test các chức năng cơ bản"""
     try:
@@ -146,14 +237,20 @@ async def main():
         await test_surf_facebook(browser)
         await asyncio.sleep(3)
         
-        # 2. Test like bài viết
-        await test_like_post(browser)
+        # 2. Test thả reaction bài viết (bao gồm cả Like)
+        await test_react_post(browser)
+        await asyncio.sleep(3)
+        #3. Lướt Facebook thêm lần nữa để kiểm tra tính ổn định
+        await test_surf_facebook(browser)
+        await asyncio.sleep(3)
+        # 4. Thả reaction thêm lần nữa để kiểm tra tính ổn định
+        await test_react_post(browser)
         await asyncio.sleep(3)
         
         log_message("Test cơ bản hoàn thành!")
         log_message("Đăng nhập: OK")
         log_message("Lướt Facebook: OK") 
-        log_message("Like bài viết: OK")
+        log_message("Thả reaction: OK")
         log_message("Có thể tiếp tục test các chức năng khác!")
         
         # Giữ browser mở để xem kết quả

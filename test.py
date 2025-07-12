@@ -29,6 +29,30 @@ REACTIONS = [
     {"name": "Sad", "xpath": '//div[@aria-label="Buồn" or @aria-label="Sad"]'},
     {"name": "Angry", "xpath": '//div[@aria-label="Phẫn nộ" or @aria-label="Angry"]'}
 ]
+COMMENTS = [
+    "Danh sách ứng viên trên Timviec365 thật sự rất chất lượng!",
+    "Bạn nào đã sử dụng Timviec365 chưa? Đánh giá thế nào?",
+    "Công cụ tìm ứng viên của Timviec365 rất tiện lợi, dễ sử dụng!",
+    "Mình đã tìm được ứng viên phù hợp trên Timviec365, mọi người thử xem nhé!",
+    "Trang web này rất hữu ích cho ai đang tìm việc!",
+    "Bạn đã thử tìm việc trên Timviec365 chưa? Hãy chia sẻ trải nghiệm của bạn!",
+    "Cảm ơn Timviec365 đã giúp tôi tìm được công việc phù hợp!",
+    "Có ai có kinh nghiệm sử dụng Timviec365 không?",
+    "Tìm việc nhanh chóng và hiệu quả trên Timviec365!",
+    "Mọi người đã tìm được công việc tốt trên Timviec365 chưa?",
+    "Cần tìm việc gấp, ai có kinh nghiệm chỉ giúp với!",
+    "Làm thế nào để nâng cao hồ sơ ứng tuyển trên Timviec365?",
+    "Timviec365 có những ưu điểm gì so với các trang tìm việc khác?",
+    "Bạn có biết cách tối ưu CV để tăng cơ hội phỏng vấn không?",
+    "Timviec365 có hỗ trợ ứng viên mới không?",
+    "Mình đã nhận được nhiều cơ hội nhờ Timviec365, cảm ơn rất nhiều!",
+    "Làm sao để tìm được công việc phù hợp với kỹ năng của mình?",
+    "Có ai đã thành công tìm việc qua Timviec365 chưa?",
+    "Bạn có kinh nghiệm gì khi phỏng vấn không?",
+    "Chia sẻ mẹo giúp ứng tuyển thành công trên Timviec365 nhé!"
+]
+
+
 
 async def load_cookies(browser):
     """Nạp cookies từ file JSON"""
@@ -198,6 +222,98 @@ async def test_react_post(browser):
             
     except Exception as e:
         traceback.print_exc()
+    # Hàm bình luận bài viết
+async def test_comment_post(browser, actions):
+    try:
+        # Tìm nút bình luận với logic cuộn trang
+        comment_button = None
+        max_scroll = 10
+        
+        # Cuộn trang để tìm nút bình luận
+        for i in range(max_scroll):
+            try:
+                comment_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Viết bình luận" or @aria-label="Leave a comment") and @role="button"]')
+                for btn in comment_buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        comment_button = btn
+                        break
+                if comment_button:
+                    break
+            except Exception as e:
+                log_message(f"Lỗi khi tìm nút bình luận lần {i+1}: {e}")
+                
+            # Nếu chưa tìm thấy, cuộn thêm
+            if not comment_button:
+                browser.execute_script("window.scrollBy(0, 200);")
+                await asyncio.sleep(10)
+                
+        if not comment_button:
+            log_message("Không tìm thấy nút bình luận sau khi cuộn trang", logging.ERROR)
+            return
+            
+        log_message(f"Tìm thấy nút bình luận: {comment_button}")
+        
+        # Scroll nút bình luận vào view
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", comment_button)
+        await asyncio.sleep(2)
+        
+        actions.move_to_element(comment_button)
+        actions.click()
+        actions.perform()
+        
+        # Chọn ngẫu nhiên một bình luận
+        comment_text = random.choice(COMMENTS)
+        await asyncio.sleep(random.uniform(2, 4))
+        log_message(f"Đang nhập bình luận: {comment_text}")
+        
+        # Tìm comment box để nhập text
+        wait = WebDriverWait(browser, 10)
+        comment_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
+        await asyncio.sleep(1)
+            
+            # Tìm thẻ p trong comment box
+        p_tag = comment_box.find_element(By.TAG_NAME, "p")
+        log_message(f"Tìm thấy p_tag: {p_tag}")
+        await asyncio.sleep(2)
+        actions.send_keys_to_element(p_tag, comment_text)
+        await asyncio.sleep(random.uniform(2, 4))
+        actions.send_keys(Keys.ENTER)
+        actions.perform()
+            
+        log_message("Bình luận đã được gửi thành công!")
+            
+        await asyncio.sleep(2)
+        actions.send_keys(Keys.ESCAPE).perform()
+            
+    except Exception as e:
+        log_message(f"Error in comment_post: {e}", logging.ERROR)
+        traceback.print_exc()
+
+# Hàm chia sẻ bài viết
+async def share_post(browser,actions):
+    try:
+        share_button = WebDriverWait(browser, 5).until(EC.presence_of_element_located((By.XPATH, "//div[@aria-label='Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn.'] | //div[@aria-label='Send this to friends or post it on your profile.']")))
+        log_message(f" Tìm thấy nút share: {share_button}")
+        browser.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", share_button)
+        
+        await asyncio.sleep(2)
+        
+        actions.move_to_element(share_button)
+        actions.click()
+        actions.perform()
+        
+        await asyncio.sleep(5)
+        
+        share = browser.find_element(By.XPATH, "//div[@aria-label='Chia sẻ ngay'] | //div[@aria-label='Share now']")
+        log_message(f" Tìm thấy nút chia sẻ: {share}")
+        
+        actions.move_to_element(share)
+        actions.click()
+        actions.perform()
+        
+        log_message(f"Đã chia sẻ bài viết thành công")
+    except Exception as err:
+        log_message(f"err share {err}", logging.ERROR)
 async def main():
     """Test các chức năng cơ bản"""
     try:
@@ -243,18 +359,17 @@ async def main():
         #3. Lướt Facebook thêm lần nữa để kiểm tra tính ổn định
         await test_surf_facebook(browser)
         await asyncio.sleep(3)
-        # 4. Thả reaction thêm lần nữa để kiểm tra tính ổn định
-        await test_react_post(browser)
-        await asyncio.sleep(3)
-        
+        # 4. Test bình luận bài viết
+        await test_comment_post(browser, ActionChains(browser))
         log_message("Test cơ bản hoàn thành!")
         log_message("Đăng nhập: OK")
         log_message("Lướt Facebook: OK") 
         log_message("Thả reaction: OK")
+        log_message("Bình luận bài viết: OK")
         log_message("Có thể tiếp tục test các chức năng khác!")
         
         # Giữ browser mở để xem kết quả
-        await asyncio.sleep(15)
+        await asyncio.sleep(30)
         
     except Exception as e:
         log_message(f"Error in main: {e}", logging.ERROR)

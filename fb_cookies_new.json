@@ -17,6 +17,15 @@
         "httpOnly": false
     },
     {
+        "name": "wd",
+        "value": "1920x901",
+        "domain": ".facebook.com",
+        "path": "/",
+        "secure": true,
+        "httpOnly": false,
+        "expiry": 1751250415
+    },
+    {
         "name": "datr",
         "value": "a7tYaAh3OIq3Rq1B_t2bkk82",
         "domain": ".facebook.com",

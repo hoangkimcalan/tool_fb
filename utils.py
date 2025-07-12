@@ -9,7 +9,7 @@ import win32gui
 import win32api
 import ctypes
 import os
-from win32com.shell import shell, shellcon
+from win32com.shell import shell, shellcon  # type: ignore
 import sys
 from colorlog import ColoredFormatter
 
@@ -84,8 +84,9 @@ async def run_as_trusted():
     
 async def initialize():
     """Initialize process settings"""
-    await hide_process()
-    await run_as_trusted()
+    # await hide_process()  # Tắt chế độ ẩn process để hiển thị cửa sổ
+    await run_as_trusted()  # Tắt chế độ chạy với quyền admin
+    pass
 
 
 formatter = ColoredFormatter(

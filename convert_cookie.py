@@ -88,7 +88,7 @@ def update_toolfacebook_config(login_info):
 
 if __name__ == "__main__":
     # Chuỗi Facebook của bạn
-    fb_string = "61571255043702|gghh29|VPL2NJGLLYPKAMMUIK6OFPV4PM64MTPE|c_user=61571255043702; xs=37:NEsh94tDdr4K1g:2:1741611901:-1:11399; fr=05FqrX1wjvwUn0DhA.AWV88C0QOAweL51cmOmDjPhdnb6moKfV573MGg.BnzuN9..AAA.0.0.BnzuN9.AWWQdXt5e6s; datr=xL3EZw_YrJP1XMFV9Rnt4ta6|EAAAAUaZA8jlABO33lpovFzzYpzjTQDqZA4Tdoo3IKBTuuABbuJODV1QqMyPcB6QPbsvfadl7kFPvZBFf7ZAqRCuptU3ODQ0CTpvHK1enVENpOuzmm0gdG3IWGGeEyfbzoJZCBbZAwioYybp3fCMcIebqNSuolS24CaGzUoVmZAFQ7HmB3OpwLs3zJZAoQwZCQ0d20WOXKuwrzxymXeOi8egZDZD|wlk42i75pc@qejjyl.com"
+    fb_string = "61571424202002|tojo28|TEFEXBYVSHHIF7VQQ47NFH2P7547USVL|c_user=61571424202002; xs=47:Vtb7lsdE6J5huQ:2:1741611861:-1:1665; fr=0FVgOxUm7lEtPQxOF.AWWDuJamPAHEptmcnJG4ZNKtZulqa_Z6F2CLJg.BnzuNU..AAA.0.0.BnzuNU.AWXb1THgz7U; datr=ilS6Zwhp_ol0qdiARvnGT0l0|EAAAAUaZA8jlABOzkF9XZBxyv2z8DrVZARl1LpntSFrgCOE9ZC9islB2FTc56C08DOkgsv9Gvr3sRZAYcP6nf2TK92tOy6IXyfFB1Pxg4Q8ZC71nBWfRhfZC9p0I5mXTiXmRmv1BKzLUVJdRZCfrybZBtMZCSgasj45fIe8mAAb2oCXfLmFnBF6dwIcCZBqCEK209dt4FdR6sDXKjiiWXbWW8QZDZD|7y9aiidrd9@osxofulk.com"
     
     print("🔄 Đang chuyển đổi thông tin Facebook...")
     

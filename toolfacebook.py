@@ -639,8 +639,8 @@ async def main():
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
 
-        user_name = "0969824645"
-        pass_word = "timviec365@/"
+        user_name = "7y9aiidrd9@osxofulk.com"
+        pass_word = "tojo28"
         code_2fa = ""
         id_chat = "10502329"
         

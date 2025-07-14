@@ -587,15 +587,11 @@ async def surf_facebook(id, title, browser):
             await asyncio.sleep(random.uniform(4, 6))
 
             if scroll_count % 13 == 0:
-                await comment_post(browser, actions)
+                # await comment_post(browser, actions)
                 await asyncio.sleep(random.uniform(3, 5))
             elif scroll_count % 7 == 0:
                 await react_post(browser)
                 await asyncio.sleep(random.uniform(3, 5))
-            elif scroll_count % 3 == 0:
-                await share_post(browser, actions)
-                await asyncio.sleep(random.uniform(3, 5))
-
 
             scroll_count = scroll_count - 1
 
@@ -685,11 +681,11 @@ async def main():
 
         while True:
             try:
-                # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
+                await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
                 #await watch_videos(browser, actions = ActionChains(browser))
                 # await post_news_feed(browser)
-                await list_friend(browser)
+                # await list_friend(browser)
                 # await add_friend(browser)
                 # await asyncio.sleep(random.uniform(2400, 3600))
             except Exception as err:

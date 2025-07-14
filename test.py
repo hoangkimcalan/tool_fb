@@ -451,27 +451,30 @@ async def list_friend(browser):
         list_friend = []
         browser.get("https://www.facebook.com/friends/list")
         await asyncio.sleep(random.uniform(2, 4))
-        friends_box = browser.find_element(By.XPATH, "//div[@class='x135pmgq']")
-        log_message(f"friends_box: {friends_box}")
-        await asyncio.sleep(random.uniform(1, 3))
-        friends_link = friends_box.find_elements(By.XPATH, ".//a[@class='x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xdl72j9 x2lah0s xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x1n2onr6 x16tdsg8 x1hl2dhg xggy1nq x1ja2u2z x1t137rt x1q0g3np x87ps6o x1lku1pv x1a2a7pz x1lq5wgf xgqcy7u x30kzoy x9jhf4c x1lliihq']")
-        log_message(f"friends_link: {friends_link}")
-
-        for link in friends_link:
-            link_friend = link.get_attribute('href')
-            list_friend.append(link_friend)
-        
-        await asyncio.sleep(random.uniform(4, 6))
+        # Tìm tất cả các thẻ <a> có href bắt đầu bằng https://www.facebook.com/
+        friends_links = browser.find_elements(By.XPATH, ".//a[starts-with(@href, 'https://www.facebook.com/')]")
+        for link in friends_links:  
+            href = link.get_attribute('href')
+            if not href:
+                continue
+            # Kiểm tra href có chứa profile.php?id= hoặc có 4 dấu '/' và không chứa các từ khóa khác
+            if (
+                "profile.php?id=" in href
+                or (href.count('/') == 4 and "facebook.com" in href and "friends" not in href and "groups" not in href and "pages" not in href and "watch" not in href and "gaming" not in href)
+            ):
+                list_friend.append(href)
+        # Loại bỏ trùng lặp
+        list_friend = list(set(list_friend))
         log_message(f"list_friend: {list_friend}")
+        if not list_friend:
+            log_message("Không tìm thấy bạn bè nào!", logging.WARNING)
+            return
         await send_message(browser, random.choice(list_friend), random.choice(CONTENT_POST))
-        
-        
     except Exception as err:
         log_message(f"err list_friend {err}", logging.ERROR)
         traceback.print_exc()
-        pass
 
-# Hàm nhắn tin
+# Hàm nhắn tin cho một bạn
 async def send_message(browser, link_user, content):
     try:
         browser.get(link_user)
@@ -480,11 +483,14 @@ async def send_message(browser, link_user, content):
         try:
             send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Nhắn tin"]')
         except:
-            send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Message"]')
-        log_message(f"send_button: {send_button}")
+            try:
+                send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Message"]')
+            except:
+                log_message("Không tìm thấy nút nhắn tin!", logging.ERROR)
+                return
         send_button.click()
         await asyncio.sleep(random.uniform(2, 4))
-        
+        # Tìm ô nhập tin nhắn
         try:
             post_box = WebDriverWait(browser, 5).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
@@ -495,26 +501,19 @@ async def send_message(browser, link_user, content):
             )
         await asyncio.sleep(3)
         p_tag = post_box.find_element(By.TAG_NAME, "p")
-        
         await asyncio.sleep(random.uniform(2, 4))
-        log_message(f" p_tag: {p_tag}")
-        
-        if(p_tag and p_tag.is_displayed()):
+        if p_tag and p_tag.is_displayed():
             actions.send_keys_to_element(p_tag, content)
             await asyncio.sleep(random.uniform(2, 4))
             actions.send_keys(Keys.ENTER)
             actions.perform()
             await asyncio.sleep(2)
-            
-        log_message("Tin nhan đã được gửi thành công!")
-        
+            log_message("Tin nhắn đã được gửi thành công!")
         await asyncio.sleep(2)
         actions.send_keys(Keys.ESCAPE).perform()
-        
     except Exception as err:
         log_message(f"err send_message {err}", logging.ERROR)
         traceback.print_exc()
-        pass
 
 
 # Hàm gửi lời mời kết bạn trong group
@@ -688,10 +687,9 @@ async def main():
             try:
                 # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
-                await post_news_feed(browser)
                 #await watch_videos(browser, actions = ActionChains(browser))
                 # await post_news_feed(browser)
-                # await list_friend(browser)
+                await list_friend(browser)
                 # await add_friend(browser)
                 # await asyncio.sleep(random.uniform(2400, 3600))
             except Exception as err:

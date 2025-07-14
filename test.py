@@ -410,25 +410,28 @@ async def post_news_feed(browser):
     try:
         await asyncio.sleep(random.uniform(5, 8))
         actions = ActionChains(browser)
-        home = WebDriverWait(browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//a[@aria-label='Home'] | //a[@aria-label='Trang chủ']")))
+        # Tim kiếm nút Home
+        home = WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//a[@aria-label='Home' or @aria-label='Trang chủ']"))
+        )
         home.click()
         await asyncio.sleep(random.uniform(5, 8))
+        # Tìm nút tạo bài viết mới (phải dùng @class)
         h3_post = browser.find_element(By.XPATH, "//div[@class='xi81zsa x1lkfr7t xkjl1po x1mzt3pk xh8yej3 x13faqbe']")
         h3_post.click()
+        # Chờ cho hộp thoại tạo bài viết mới xuất hiện
         post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
         await asyncio.sleep(1)
+
         p_tag = post_box.find_element(By.TAG_NAME, "p")
-        
-        log_message(f" p_tag: {p_tag}")
-        
+
         if(p_tag and p_tag.is_displayed()):
             await asyncio.sleep(2)
             actions.send_keys_to_element(p_tag, random.choice(CONTENT_POST))
             await asyncio.sleep(random.uniform(2, 4))
             actions.perform()
             await asyncio.sleep(2)
-            
+            # Tìm nút đăng bài viết
             try:
                 post_new_button = browser.find_element(By.CSS_SELECTOR, "div[aria-label='Đăng']")
             except:
@@ -436,7 +439,6 @@ async def post_news_feed(browser):
             await asyncio.sleep(2)
             post_new_button.click()
             log_message("Đã đăng bài viết thành công!")
-            
         await asyncio.sleep(random.uniform(2, 4))
     except Exception as err:
         log_message(f"err post new feed {err}", logging.ERROR)
@@ -686,7 +688,8 @@ async def main():
             try:
                 # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
-                await watch_videos(browser, actions = ActionChains(browser))
+                await post_news_feed(browser)
+                #await watch_videos(browser, actions = ActionChains(browser))
                 # await post_news_feed(browser)
                 # await list_friend(browser)
                 # await add_friend(browser)

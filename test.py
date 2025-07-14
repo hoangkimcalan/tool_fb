@@ -209,7 +209,7 @@ async def login(username, password, code_2fa, browser):
 
 #Hàm react_post
 async def react_post(browser):
-    """Test chức năng thả reaction cho bài viết"""
+    """Chức năng thả reaction cho bài viết"""
     # Không cuộn, chỉ tìm nút Like hiện tại
     try:
         like_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]')
@@ -336,7 +336,6 @@ async def share_post(browser, actions):
         log_message(f"Error in share_post: {e}", logging.ERROR)
         traceback.print_exc()
 
-# Hàm xem video
 async def watch_videos(browser, actions):
     try:
         browser.get("https://www.facebook.com/watch/")
@@ -347,37 +346,34 @@ async def watch_videos(browser, actions):
 
             await asyncio.sleep(random.uniform(4, 7))
 
-            # Lấy danh sách video
-            video_selected = WebDriverWait(browser, 10).until(EC.presence_of_all_elements_located(
-                (By.XPATH, "//div[@class='x1ey2m1c x9f619 xds687c x17qophe x10l6tqk x13vifvy x1ypdohk']")
-            ))
+            # Tìm tất cả video trên trang
+            video_selected = browser.find_elements(By.XPATH, "//div[contains(@class, 'x1ey2m1c') and contains(@class, 'x9f619')]")
 
-            # Lọc video trong tầm nhìn
+            # Lọc các video đang hiển thị
             visible_videos = [video for video in video_selected if video.is_displayed()]
             await asyncio.sleep(random.uniform(40, 60))
 
             if visible_videos:
-                log_message(f"visible_videos: {visible_videos}")
+                log_message(f"Found {len(visible_videos)} visible videos.")
                 current_video = visible_videos[0]
 
                 # Nếu scroll_count_video chia hết cho 7 hoặc 13 thì thực hiện hành động
                 if scroll_count_video % 7 == 0 or scroll_count_video % 13 == 0:
                     if scroll_count_video % 7 == 0:
                         await asyncio.sleep(random.uniform(5, 7))
-                        try:
-                            like_buttons = WebDriverWait(browser, 10).until(
-                                EC.presence_of_all_elements_located((By.XPATH, "//span[@data-ad-rendering-role='like_button'] | //span[@data-ad-rendering-role='thích_button']"))
-                            )
-                            
-                            if like_buttons and like_buttons[0].is_displayed():
-                                browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_buttons[0])
-                                await asyncio.sleep(random.uniform(1, 3))
-                                like_buttons[0].click()
-                                log_message("Liked the post video successfully!")
-                            else:
-                                log_message("Like button is not visible, skipping...")
-                        except Exception as e:
-                            log_message(f"Error clicking like button: {e}")
+                        # Tìm nút like sử dụng selector đã được test thành công
+                        like_buttons = browser.find_elements(By.XPATH, "//span[@data-ad-rendering-role='like_button']")
+                        for btn in like_buttons:
+                            if btn.is_displayed() and btn.is_enabled():
+                                like_button = btn
+                                break
+                        if like_button:
+                            browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+                            await asyncio.sleep(random.uniform(1, 3))
+                            like_button.click()
+                            log_message("Liked the post video successfully!")
+                        else:
+                            log_message("Like button is not visible, skipping...")
 
                     elif scroll_count_video % 13 == 0:
                         await share_post(browser, actions)
@@ -392,20 +388,22 @@ async def watch_videos(browser, actions):
                     # Lấy URL video đã tương tác
                     video_url = browser.current_url
                     log_message(f"current_url: {video_url}")
+            else:
+                log_message("No visible videos found, continuing...")
 
-            # Trừ lượt cuộn
+            # Cuộn trang để xem video tiếp theo
             scroll_count_video -= 1
 
-            # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
+            # Thực hiện cuộn trang với hiệu ứng mượt mà
             current_scroll = browser.execute_script("return window.pageYOffset;")
             target_scroll = current_scroll + random.randint(600, 800)
             await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
-
-            
+                
         log_message("Đã hoàn thành xem video Facebook")
         
     except Exception as err:
         log_message(f"err watch videos {err}", logging.ERROR)
+        traceback.print_exc()
 
 # Hàm tạo bài viết mới
 async def post_news_feed(browser):
@@ -686,7 +684,9 @@ async def main():
 
         while True:
             try:
-                await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
+                # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
+                await asyncio.sleep(random.uniform(2, 4))
+                await watch_videos(browser, actions = ActionChains(browser))
                 # await post_news_feed(browser)
                 # await list_friend(browser)
                 # await add_friend(browser)

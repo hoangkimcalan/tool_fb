@@ -344,7 +344,7 @@ async def watch_videos(browser, actions):
     try:
         browser.get("https://www.facebook.com/watch/")
         await asyncio.sleep(random.uniform(3, 6))
-        scroll_count_video = random.randint(4, 6)  # Số lần cuộn #fix
+        scroll_count_video = random.randint(6, 15)  # Số lần cuộn #fix
         while scroll_count_video > 0:
             log_message(f"scroll_count_watch_video {scroll_count_video}")
 
@@ -734,13 +734,15 @@ async def main():
 
         while True:
             try:    
-                # await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
-                # await asyncio.sleep(random.uniform(2, 4))
-                # await watch_videos(browser, actions = ActionChains(browser))
-                # await post_news_feed(browser)
+                await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
+                await asyncio.sleep(random.uniform(2, 4))
+                await watch_videos(browser, actions = ActionChains(browser))
+                await post_news_feed(browser)
+                await asyncio.sleep(random.uniform(2, 4))
                 await list_friend(browser)
+                await asyncio.sleep(random.uniform(2, 4))
                 await add_friend(browser)
-                await asyncio.sleep(random.uniform(2400, 3600))
+                await asyncio.sleep(random.uniform(200, 300))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)
                 traceback.print_exc()

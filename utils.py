@@ -48,13 +48,14 @@ os.makedirs(log_dir, exist_ok=True)
 
 log_file = os.path.join(log_dir, "toolfacebook.log")
 
-def log_message(message):
-    """Ghi log vào file với timestamp"""
-    with open(log_file, "a", encoding="utf-8") as log_f:
-        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        log_f.write(f"[{timestamp}] {message}\n")
-
-    print(message)  # Vẫn in log ra terminal để debug dễ hơn
+def log_message(message, level=logging.INFO):
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    if level == logging.DEBUG:
+        logging.info(message)
+    elif level == logging.WARNING:
+        logging.warning(message)
+    elif level == logging.ERROR:
+        logging.error(message) # Vẫn in log ra terminal để debug dễ hơn
 
 async def hide_process():
     # Hide window and process

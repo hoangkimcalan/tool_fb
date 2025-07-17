@@ -460,7 +460,7 @@ async def list_friend(browser):
             # Kiểm tra href có chứa profile.php?id= hoặc có 4 dấu '/' và không chứa các từ khóa khác
             if (
                 "profile.php?id=" in href
-                or (href.count('/') == 4 and "facebook.com" in href and "friends" not in href and "groups" not in href and "pages" not in href and "watch" not in href and "gaming" not in href)
+                or (href.count('/') == 4 and "facebook.com" in href and "?" not in href and "#" not in href)
             ):
                 list_friend.append(href)
         # Loại bỏ trùng lặp
@@ -515,50 +515,96 @@ async def send_message(browser, link_user, content):
         log_message(f"err send_message {err}", logging.ERROR)
         traceback.print_exc()
 
-
-# Hàm gửi lời mời kết bạn trong group
 async def add_friend(browser):
     try:
-        browser.get("https://www.facebook.com/search/groups?q={}&filters=eyJwdWJsaWNfZ3JvdXBzOjAiOiJ7XCJuYW1lXCI6XCJwdWJsaWNfZ3JvdXBzXCIsXCJhcmdzXCI6XCJcIn0ifQ%3D%3D".format("tuyển dụng"))
-        await asyncio.sleep(random.uniform(2, 4))
+        log_message("Bắt đầu quy trình thêm bạn bè.", logging.INFO)
 
-        groups_box = browser.find_elements(By.XPATH, '//a[@aria-hidden="true" and contains(@href, "/groups/")]')
-        link_group = random.choice(groups_box).get_attribute("href")
-        browser.get(link_group.rstrip("/") + "/members/near_you")
-        await asyncio.sleep(random.uniform(2, 4))
-        check_status = browser.find_element(By.CSS_SELECTOR,
-                                            "[class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w xeuugli xg83lxy x1h0ha7o x1120s5i x1nn3v0j']")
-        print('status:', check_status.text)
-        
-        
-        # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
-        current_scroll = browser.execute_script("return window.pageYOffset;")
-        target_scroll = current_scroll + random.randint(1000, 3500)
-        await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
-        
+        log_message("Tìm kiếm các nhóm tuyển dụng...", logging.INFO)
+        browser.get("https://www.facebook.com/search/groups?q=tuyển%20dụng")
+        await asyncio.sleep(random.uniform(3, 5))
+        groups_box = browser.find_elements(By.XPATH, '//a[contains(@href, "/groups/") and @aria-hidden="true"]')
+        group_links = [g.get_attribute("href") for g in groups_box if g.is_displayed() and g.get_attribute("href")]
+
+        link_group = random.choice(group_links)
+
+        members_url = link_group.rstrip("/") + "/members"
+        browser.get(members_url)
         await asyncio.sleep(random.uniform(5, 8))
-        link_users = browser.find_elements(By.XPATH, "//a[@class='x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xt0psk2 xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1a2a7pz xkrqix3 x1sur9pj xzsf02u x1pd3egz']")
-        await asyncio.sleep(random.uniform(2, 4))
-        link_user = link_users[random.randint(10, len(link_users) - 1)]
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", link_user)
-        time.sleep(random.uniform(2, 3))
-        link_user.click()
-        await asyncio.sleep(random.uniform(8, 10))
-        try:
-            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Add friend']")
-        except:
-            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Thêm bạn bè']")
-        time.sleep(random.uniform(2, 3))
-        add_friend_buttons[len(add_friend_buttons) - 1].click()
-        time.sleep(random.uniform(2, 3))
-        log_message("Đã gửi lời mời kết bạn thành công!")
-        await send_message(browser, browser.current_url, "Chào bạn, mình là nhân sự bên timviec365, bạn cho mình hỏi là bạn đang đi tìm việc hay là bên tuyển dụng đó ạ? Nếu bạn đang cần tìm ứng viên hoặc đang cần tìm việc làm thì bạn lên trang web timviec365.vn tham khảo nhé.")
-        
-    except Exception as err:
-        log_message(f"err add_friend {err}", logging.ERROR)
-        traceback.print_exc()
-        pass
 
+        for i in range(5):
+            browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            await asyncio.sleep(random.uniform(2, 4))
+
+        add_friend_buttons = browser.find_elements(
+            By.XPATH,
+            "//div[@role='button' and (starts-with(@aria-label, 'Kết bạn với ') or starts-with(@aria-label, 'Add Friend'))]"
+        )
+
+        profile_info_to_add = []
+        for idx, btn in enumerate(add_friend_buttons):
+            try:
+                aria_label = btn.get_attribute('aria-label')
+                user_name = ''
+                if aria_label:
+                    if aria_label.startswith('Kết bạn với '):
+                        user_name = aria_label[len('Kết bạn với '):].strip()
+                    elif aria_label.startswith('Add Friend'):
+                        user_name = aria_label[len('Add Friend'):].strip()
+                
+                profile_link_element = None
+                member_card_xpath = "./ancestor::div[contains(@class, 'x1ja2u2z')][1]"
+                member_card = None
+                member_card = btn.find_element(By.XPATH, member_card_xpath)
+                if member_card:
+                    # Tìm link profile trong member_card
+                    xpath_profile_link = f".//a[@role='link' and (contains(., '{user_name}') or @aria-label='{user_name}') and (contains(@href, '/user/') or contains(@href, 'profile.php?id='))]"
+                    try:
+                        profile_link_element = member_card.find_element(By.XPATH, xpath_profile_link)
+                    except Exception:
+                        # Fallback nếu không tìm thấy bằng tên chính xác
+                        xpath_profile_link = ".//a[@role='link' and (contains(@href, '/user/') or contains(@href, 'profile.php?id='))]"
+                        try:
+                            profile_link_element = member_card.find_element(By.XPATH, xpath_profile_link)
+                        except Exception:
+                            pass # Không tìm thấy link profile nào trong member_card này
+                if profile_link_element:
+                    link_user = profile_link_element.get_attribute('href')
+                    if link_user and not link_user.startswith("http"):
+                        link_user = "https://www.facebook.com" + link_user
+                    
+                    if link_user:
+                        profile_info_to_add.append((link_user, user_name, btn))
+                    else:
+                        log_message(f"Liên kết profile rỗng sau khi tìm thấy phần tử cho '{user_name}'.", logging.WARNING)
+                else:
+                    log_message(f"Không tìm thấy phần tử liên kết profile nào cho '{user_name}'.", logging.WARNING)
+            except Exception as e:
+                log_message(f"Lỗi khi xử lý nút Kết bạn (chung): {e}", logging.ERROR)
+                traceback.print_exc()
+                continue
+
+        if not profile_info_to_add:
+            return
+
+        link_user, user_name, add_btn = random.choice(profile_info_to_add)
+        
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", add_btn)
+        await asyncio.sleep(random.uniform(1, 2))
+        
+        try:
+            add_btn.click()
+            log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name}!", logging.INFO)
+        except Exception as click_err:
+            log_message(f"Không thể click nút 'Kết bạn': {click_err}. Thử click bằng JavaScript.", logging.WARNING)
+            browser.execute_script("arguments[0].click();", add_btn)
+            log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name} (qua JS click)!", logging.INFO)
+
+        await asyncio.sleep(random.uniform(2, 4))
+        await send_message(browser, link_user, "Chào bạn, mình là nhân sự bên timviec365, bạn cho mình hỏi là bạn đang đi tìm việc hay là bên tuyển dụng đó ạ? Nếu bạn đang cần tìm ứng viên hoặc đang cần tìm việc làm thì bạn lên trang web timviec365.vn tham khảo nhé.")
+
+    except Exception as err:
+        log_message(f"Lỗi tổng quát trong hàm add_friend: {err}", logging.ERROR)
+        traceback.print_exc()
 # hàm lướt dạo facebook
 async def surf_facebook(id, title, browser):
     '''hàm này để lướt fb dạo
@@ -655,10 +701,10 @@ async def main():
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
 
-        user_name = "7y9aiidrd9@osxofulk.com"
-        pass_word = "tojo28"
+        user_name = "gianvu17607@gmail.com"
+        pass_word = "lvqh1234"
         code_2fa = ""
-        id_chat = "61571424202002"
+        id_chat = "100087230611083"
         
         if os.path.exists(COOKIE_FILE):
             await load_cookies(browser)
@@ -681,12 +727,12 @@ async def main():
 
         while True:
             try:
-                await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
+                # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
                 #await watch_videos(browser, actions = ActionChains(browser))
                 # await post_news_feed(browser)
                 # await list_friend(browser)
-                # await add_friend(browser)
+                await add_friend(browser)
                 # await asyncio.sleep(random.uniform(2400, 3600))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

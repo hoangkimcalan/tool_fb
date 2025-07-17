@@ -211,69 +211,79 @@ async def login(username, password, code_2fa, browser):
 async def react_post(browser):
     """Chức năng thả reaction cho bài viết"""
     try:
-        like_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]')
+        # 1. Tìm nút 'Like' ban đầu (Thích/Like)
+        # Sử dụng WebDriverWait để chờ nút Like xuất hiện và có thể click được.
         like_button = None
-        for btn in like_buttons:
-            if btn.is_displayed() and btn.is_enabled():
-                like_button = btn
-                break
-        if not like_button:
+        try:
+            like_button = WebDriverWait(browser, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]'))
+            )
+        except Exception:
+            log_message("Không tìm thấy nút Thích/Like để tương tác.", logging.WARNING)
             return
+
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
         await asyncio.sleep(2)
+
         selected_reaction = random.choice(REACTIONS)
         log_message(f"Selected reaction: {selected_reaction['name']}")
+
+        # 2. Di chuột qua nút 'Like' để hiển thị các reaction options
         actions = ActionChains(browser)
-        actions.move_to_element(like_button)
-        actions.perform()
-        await asyncio.sleep(4)  # Tăng thời gian hover
-        # DEBUG: Log lại toàn bộ các nút biểu cảm sau khi hover
-        reaction_buttons = browser.find_elements(By.XPATH, "//div[@role='button']")
-        found_any = False
-        for idx, btn in enumerate(reaction_buttons):
-            aria = btn.get_attribute("aria-label")
-            outer_html = btn.get_attribute("outerHTML")
-            if aria:
-                # log_message(f"Reaction Button {idx}: aria-label='{aria}' | HTML: {outer_html[:200]}")
-                found_any = True
-        if not found_any:
-            log_message("Không tìm thấy bất kỳ reaction button nào sau khi hover.", logging.WARNING)
-        # Tìm reaction button đúng
+        actions.move_to_element(like_button).perform()
+        await asyncio.sleep(4)  # Đợi đủ thời gian cho các reaction options xuất hiện
+
+        # 3. Tìm nút reaction cụ thể
         reaction_button = None
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            exact_xpath = f'//div[@role="button" and @aria-label="{selected_reaction["name"]}"]'
+        # Xây dựng XPath cho nút reaction đã chọn.
+        # Facebook có thể dùng aria-label chính xác hoặc aria-label có chứa số lượng người đã reaction.
+        # Chúng ta sẽ thử cả hai trường hợp.
+        
+        # Thử XPath chính xác trước
+        exact_xpath = selected_reaction['xpath']
+        
+        try:
+            reaction_button = WebDriverWait(browser, 5).until(
+                EC.element_to_be_clickable((By.XPATH, exact_xpath))
+            )
+            log_message(f"Found reaction button with exact xpath for {selected_reaction['name']}")
+        except Exception:
+            log_message(f"Không tìm thấy reaction button chính xác cho '{selected_reaction['name']}'. Thử XPath chứa từ khóa.", logging.INFO)
+            # Nếu không tìm thấy bằng XPath chính xác, thử tìm bằng aria-label chứa tên reaction
+            # Ví dụ: "Yêu thích: 123 người"
+            containing_xpath = f'//div[@role="button" and contains(@aria-label, "{selected_reaction["name"]}")]'
             try:
-                reaction_button = WebDriverWait(browser, 3).until(
-                    EC.presence_of_element_located((By.XPATH, exact_xpath))
+                reaction_button = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, containing_xpath))
                 )
+                log_message(f"Found reaction button with containing xpath for {selected_reaction['name']}")
             except Exception:
-                reaction_button = None
-            if reaction_button and reaction_button.is_displayed() and reaction_button.is_enabled():
-                break
-            if attempt < max_attempts - 1:
-                await asyncio.sleep(2)
-                actions.move_to_element(like_button)
-                actions.perform()
-                await asyncio.sleep(2)
+                log_message(f"Hoàn toàn không tìm thấy reaction button cho '{selected_reaction['name']}'.", logging.WARNING)
+                traceback.print_exc() # In chi tiết lỗi để debug nếu cần
+                return
+
         if not reaction_button:
             log_message(f"Không tìm thấy reaction button với aria-label='{selected_reaction['name']}' sau khi hover.", logging.WARNING)
             return
+
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reaction_button)
         await asyncio.sleep(1)
-        click_actions = ActionChains(browser)
-        click_actions.move_to_element(reaction_button)
-        click_actions.click()
-        click_actions.perform()
+        
+        # 4. Click vào nút reaction
+        actions.move_to_element(reaction_button)
+        actions.click()
+        actions.perform()
+        log_message(f"Đã thả cảm xúc '{selected_reaction['name']}' thành công!")
         await asyncio.sleep(random.uniform(2, 3))
+
     except Exception as e:
+        log_message(f"Lỗi trong hàm react_post: {e}", logging.ERROR)
         traceback.print_exc()
         pass
-
-
 # Hàm bình luận bài viết
 async def comment_post(browser, actions):
     try:
+        await asyncio.sleep(random.uniform(2, 4))
         comment_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Viết bình luận" or @aria-label="Leave a comment") and @role="button"]')
         for btn in comment_buttons:
             if btn.is_displayed() and btn.is_enabled():
@@ -633,7 +643,7 @@ async def surf_facebook(id, title, browser):
 
     try:
         await asyncio.sleep(random.uniform(3, 5))
-        scroll_count = random.randint(6, 15)  # Số lần cuộn
+        scroll_count = random.randint(14, 15)  # Số lần cuộn
         actions = ActionChains(browser)
         while scroll_count > 0:            
             # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)

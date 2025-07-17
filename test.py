@@ -491,14 +491,29 @@ async def send_message(browser, link_user, content):
         send_button.click()
         await asyncio.sleep(random.uniform(2, 4))
         # Tìm ô nhập tin nhắn
+        post_box = None
         try:
-            post_box = WebDriverWait(browser, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
+            post_box = WebDriverWait(browser, 12).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[contenteditable='true'][role='textbox']"))
             )
-        except:
-            post_box = WebDriverWait(browser, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
-            )
+        except Exception as e:
+            # Nếu không tìm thấy, thử lại các selector cũ
+            try:
+                post_box = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
+                )
+            except:
+                try:
+                    post_box = WebDriverWait(browser, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
+                    )
+                except Exception as e2:
+                    # Log lại toàn bộ các div[contenteditable='true'] để debug
+                    all_boxes = browser.find_elements(By.CSS_SELECTOR, "div[contenteditable='true']")
+                    for idx, box in enumerate(all_boxes):
+                        log_message(f"Box {idx}: aria-label={box.get_attribute('aria-label')}, outerHTML={box.get_attribute('outerHTML')[:200]}")
+                    log_message(f"Không tìm thấy ô nhập tin nhắn: {e2}", logging.ERROR)
+                    return
         await asyncio.sleep(3)
         p_tag = post_box.find_element(By.TAG_NAME, "p")
         await asyncio.sleep(random.uniform(2, 4))

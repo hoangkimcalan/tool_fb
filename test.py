@@ -210,32 +210,38 @@ async def login(username, password, code_2fa, browser):
 #Hàm react_post
 async def react_post(browser):
     """Chức năng thả reaction cho bài viết"""
-    # Không cuộn, chỉ tìm nút Like hiện tại
     try:
         like_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]')
+        like_button = None
         for btn in like_buttons:
             if btn.is_displayed() and btn.is_enabled():
                 like_button = btn
                 break
         if not like_button:
-            # Không tìm thấy nút Like, bỏ qua
             return
-        # Scroll nút Like vào view để đảm bảo có thể click
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
         await asyncio.sleep(2)
-        # Chọn ngẫu nhiên một reaction
-        selected_reaction = random.choice(REACTIONS)    
+        selected_reaction = random.choice(REACTIONS)
         log_message(f"Selected reaction: {selected_reaction['name']}")
-        # Hover để hiện reaction panel
         actions = ActionChains(browser)
         actions.move_to_element(like_button)
         actions.perform()
-        await asyncio.sleep(3)  # Chờ để hover có hiệu ứng
-        # Tìm reaction button
+        await asyncio.sleep(4)  # Tăng thời gian hover
+        # DEBUG: Log lại toàn bộ các nút biểu cảm sau khi hover
+        reaction_buttons = browser.find_elements(By.XPATH, "//div[@role='button']")
+        found_any = False
+        for idx, btn in enumerate(reaction_buttons):
+            aria = btn.get_attribute("aria-label")
+            outer_html = btn.get_attribute("outerHTML")
+            if aria:
+                # log_message(f"Reaction Button {idx}: aria-label='{aria}' | HTML: {outer_html[:200]}")
+                found_any = True
+        if not found_any:
+            log_message("Không tìm thấy bất kỳ reaction button nào sau khi hover.", logging.WARNING)
+        # Tìm reaction button đúng
         reaction_button = None
         max_attempts = 3
         for attempt in range(max_attempts):
-            # Tìm các div có role="button" và aria-label chính xác
             exact_xpath = f'//div[@role="button" and @aria-label="{selected_reaction["name"]}"]'
             try:
                 reaction_button = WebDriverWait(browser, 3).until(
@@ -247,14 +253,12 @@ async def react_post(browser):
                 break
             if attempt < max_attempts - 1:
                 await asyncio.sleep(2)
-                # Thử hover lại để panel hiển thị lại
                 actions.move_to_element(like_button)
                 actions.perform()
                 await asyncio.sleep(2)
         if not reaction_button:
+            log_message(f"Không tìm thấy reaction button với aria-label='{selected_reaction['name']}' sau khi hover.", logging.WARNING)
             return
-
-        # Click vào reaction button
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reaction_button)
         await asyncio.sleep(1)
         click_actions = ActionChains(browser)
@@ -497,23 +501,15 @@ async def send_message(browser, link_user, content):
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "div[contenteditable='true'][role='textbox']"))
             )
         except Exception as e:
-            # Nếu không tìm thấy, thử lại các selector cũ
+            # Nếu không tìm thấy, thử lại
             try:
                 post_box = WebDriverWait(browser, 5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
                 )
             except:
-                try:
-                    post_box = WebDriverWait(browser, 5).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
-                    )
-                except Exception as e2:
-                    # Log lại toàn bộ các div[contenteditable='true'] để debug
-                    all_boxes = browser.find_elements(By.CSS_SELECTOR, "div[contenteditable='true']")
-                    for idx, box in enumerate(all_boxes):
-                        log_message(f"Box {idx}: aria-label={box.get_attribute('aria-label')}, outerHTML={box.get_attribute('outerHTML')[:200]}")
-                    log_message(f"Không tìm thấy ô nhập tin nhắn: {e2}", logging.ERROR)
-                    return
+                post_box = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
+                )
         await asyncio.sleep(3)
         p_tag = post_box.find_element(By.TAG_NAME, "p")
         await asyncio.sleep(random.uniform(2, 4))
@@ -658,11 +654,6 @@ async def surf_facebook(id, title, browser):
 
         await asyncio.sleep(random.uniform(2, 5))
         log_message("Đã hoàn thành lướt Facebook")
-        # await asyncio.sleep(random.uniform(2, 4))
-        # try:
-        #     await watch_videos(browser)
-        # except:
-        #     pass
 
     except Exception as err:
         log_message(f"err {err}", logging.ERROR)
@@ -741,14 +732,14 @@ async def main():
             log_message(f'id_fb: {id_fb}')
 
         while True:
-            try:
-                # await surf_facebook("61571424202002", random.choice(COMMENTS), browser)
+            try:    
+                await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
-                #await watch_videos(browser, actions = ActionChains(browser))
-                # await post_news_feed(browser)
-                # await list_friend(browser)
+                await watch_videos(browser, actions = ActionChains(browser))
+                await post_news_feed(browser)
+                await list_friend(browser)
                 await add_friend(browser)
-                # await asyncio.sleep(random.uniform(2400, 3600))
+                await asyncio.sleep(random.uniform(2400, 3600))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)
                 traceback.print_exc()

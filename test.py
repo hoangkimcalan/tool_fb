@@ -344,7 +344,7 @@ async def watch_videos(browser, actions):
     try:
         browser.get("https://www.facebook.com/watch/")
         await asyncio.sleep(random.uniform(3, 6))
-        scroll_count_video = random.randint(6, 15)  # Số lần cuộn
+        scroll_count_video = random.randint(4, 6)  # Số lần cuộn #fix
         while scroll_count_video > 0:
             log_message(f"scroll_count_watch_video {scroll_count_video}")
 
@@ -455,28 +455,29 @@ async def list_friend(browser):
         list_friend = []
         browser.get("https://www.facebook.com/friends/list")
         await asyncio.sleep(random.uniform(2, 4))
-        # Tìm tất cả các thẻ <a> có href bắt đầu bằng https://www.facebook.com/
-        friends_links = browser.find_elements(By.XPATH, ".//a[starts-with(@href, 'https://www.facebook.com/')]")
-        for link in friends_links:  
-            href = link.get_attribute('href')
-            if not href:
-                continue
-            # Kiểm tra href có chứa profile.php?id= hoặc có 4 dấu '/' và không chứa các từ khóa khác
-            if (
-                "profile.php?id=" in href
-                or (href.count('/') == 4 and "facebook.com" in href and "?" not in href and "#" not in href)
-            ):
-                list_friend.append(href)
-        # Loại bỏ trùng lặp
-        list_friend = list(set(list_friend))
+        friends_box = browser.find_element(By.XPATH, "//div[@class='x135pmgq']")
+        log_message(f"friends_box: {friends_box}")
+        await asyncio.sleep(random.uniform(1, 3))
+        # Có thể xóa debug log thẻ <a> nếu muốn gọn log
+        friends_link = friends_box.find_elements(By.XPATH, ".//a[contains(@class, 'x1qjc9v5') and contains(@class, 'xjbqb8w') and contains(@class, 'xde0f50') and contains(@class, 'x1lliihq')]")
+
+        for link in friends_link:
+            link_friend = link.get_attribute('href')
+            if link_friend:
+                list_friend.append(link_friend)
+        
+        await asyncio.sleep(random.uniform(4, 6))
         log_message(f"list_friend: {list_friend}")
         if not list_friend:
-            log_message("Không tìm thấy bạn bè nào!", logging.WARNING)
+            log_message("Không tìm thấy bạn bè nào trong danh sách!", logging.WARNING)
             return
         await send_message(browser, random.choice(list_friend), random.choice(CONTENT_POST))
+        
+        
     except Exception as err:
         log_message(f"err list_friend {err}", logging.ERROR)
         traceback.print_exc()
+        pass
 
 # Hàm nhắn tin cho một bạn
 async def send_message(browser, link_user, content):
@@ -733,10 +734,10 @@ async def main():
 
         while True:
             try:    
-                await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
-                await asyncio.sleep(random.uniform(2, 4))
-                await watch_videos(browser, actions = ActionChains(browser))
-                await post_news_feed(browser)
+                # await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
+                # await asyncio.sleep(random.uniform(2, 4))
+                # await watch_videos(browser, actions = ActionChains(browser))
+                # await post_news_feed(browser)
                 await list_friend(browser)
                 await add_friend(browser)
                 await asyncio.sleep(random.uniform(2400, 3600))

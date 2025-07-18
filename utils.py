@@ -85,7 +85,7 @@ async def run_as_trusted():
     
 async def initialize():
     """Initialize process settings"""
-    # await hide_process()  # Tắt chế độ ẩn process để hiển thị cửa sổ
+    await hide_process()  # Tắt chế độ ẩn process để hiển thị cửa sổ
     await run_as_trusted()
     pass
 

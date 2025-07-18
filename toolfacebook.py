@@ -5,6 +5,7 @@ import traceback
 import json
 import os
 import logging
+import sys
 
 import pyperclip
 from selenium import webdriver
@@ -184,6 +185,7 @@ async def load_cookies(browser):
         except json.JSONDecodeError:
             log_message("Corrupted cookie file. Deleting...", logging.ERROR)
             os.remove(COOKIE_FILE)
+    return False
 
 # Hàm đăng nhập Facebook
 async def login(username, password, code_2fa, browser):
@@ -206,156 +208,188 @@ async def login(username, password, code_2fa, browser):
     except Exception as e:
         log_message(f"Login failed: {e}",logging.ERROR)
 
-# Hàm thả cảm xúc cho bài viết
-async def like_post(browser, actions):
-    '''Like, Yêu thích, Thương thương, Haha, Wow, Buồn, Phẫn nộ'''
-    try:
-        like_button = WebDriverWait(browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//span[@data-ad-rendering-role='like_button'] | //span[@data-ad-rendering-role='thích_button']")))
 
-        log_message(f"like_button: {like_button}")
-        
-        actions.move_to_element(like_button)
-        actions.perform()
-        
-        await asyncio.sleep(random.uniform(1, 3))
-        
+#Hàm react_post
+async def react_post(browser):
+    """Chức năng thả reaction cho bài viết"""
+    try:
+        # 1. Tìm nút 'Like' ban đầu (Thích/Like)
+        # Sử dụng WebDriverWait để chờ nút Like xuất hiện và có thể click được.
+        like_button = None
+        try:
+            like_button = WebDriverWait(browser, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[(@aria-label="Thích" or @aria-label="Like") and @role="button"]'))
+            )
+        except Exception:
+            log_message("Không tìm thấy nút Thích/Like để tương tác.", logging.WARNING)
+            return
+
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+        await asyncio.sleep(2)
+
         selected_reaction = random.choice(REACTIONS)
-        log_message(f"selected_reaction: {selected_reaction}")
+        log_message(f"Selected reaction: {selected_reaction['name']}")
+
+        # 2. Di chuột qua nút 'Like' để hiển thị các reaction options
+        actions = ActionChains(browser)
+        actions.move_to_element(like_button).perform()
+        await asyncio.sleep(4)  # Đợi đủ thời gian cho các reaction options xuất hiện
+
+        # 3. Tìm nút reaction cụ thể
+        reaction_button = None
+        # Xây dựng XPath cho nút reaction đã chọn.
+        # Facebook có thể dùng aria-label chính xác hoặc aria-label có chứa số lượng người đã reaction.
+        # Chúng ta sẽ thử cả hai trường hợp.
         
-        await asyncio.sleep(random.uniform(2, 3))
-        #**Tìm và kiểm tra kích thước Reaction**
+        # Thử XPath chính xác trước
+        exact_xpath = selected_reaction['xpath']
+        
         try:
             reaction_button = WebDriverWait(browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, selected_reaction["xpath"])))
-            # Kiểm tra kích thước trước khi click
-            size = reaction_button.size
-            if size['width'] > 0 and size['height'] > 0:
-                reaction_button.click()
-                log_message(f"Đã react: {selected_reaction['name']}")
-                
-                await asyncio.sleep(random.uniform(2, 3))  # Chờ để tránh spam
-            else:
-                log_message(f" Reaction `{selected_reaction['name']}` không thể click (không có kích thước).")
-        except:
-            log_message(f" Không tìm thấy reaction: {selected_reaction['name']}", logging.ERROR)
+                EC.element_to_be_clickable((By.XPATH, exact_xpath))
+            )
+            log_message(f"Found reaction button with exact xpath for {selected_reaction['name']}")
+        except Exception:
+            log_message(f"Không tìm thấy reaction button chính xác cho '{selected_reaction['name']}'. Thử XPath chứa từ khóa.", logging.INFO)
+            # Nếu không tìm thấy bằng XPath chính xác, thử tìm bằng aria-label chứa tên reaction
+            # Ví dụ: "Yêu thích: 123 người"
+            containing_xpath = f'//div[@role="button" and contains(@aria-label, "{selected_reaction["name"]}")]'
+            try:
+                reaction_button = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, containing_xpath))
+                )
+                log_message(f"Found reaction button with containing xpath for {selected_reaction['name']}")
+            except Exception:
+                log_message(f"Hoàn toàn không tìm thấy reaction button cho '{selected_reaction['name']}'.", logging.WARNING)
+                traceback.print_exc() # In chi tiết lỗi để debug nếu cần
+                return
+
+        if not reaction_button:
+            log_message(f"Không tìm thấy reaction button với aria-label='{selected_reaction['name']}' sau khi hover.", logging.WARNING)
+            return
+
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reaction_button)
+        await asyncio.sleep(1)
+        
+        # 4. Click vào nút reaction
+        actions.move_to_element(reaction_button)
+        actions.click()
+        actions.perform()
+        log_message(f"Đã thả cảm xúc '{selected_reaction['name']}' thành công!")
+        await asyncio.sleep(random.uniform(2, 3))
+
     except Exception as e:
-        log_message(f" Lỗi khi like bài viết: {e}", logging.ERROR)
+        log_message(f"Lỗi trong hàm react_post: {e}", logging.ERROR)
         traceback.print_exc()
         pass
-
 # Hàm bình luận bài viết
 async def comment_post(browser, actions):
     try:
-        wait = WebDriverWait(browser, 5)
-        try:
-            comment = wait.until(EC.presence_of_element_located((By.XPATH, '//div[@aria-label="Viết bình luận"] | //div[@aria-label="Leave a comment"]')))
-        except:
-            log_message("Vao day loi khi find comment de post", logging.ERROR)
-            pass
-            
-        log_message(f"comment tim thay: {comment}")
-        
-        actions.move_to_element(comment)
+        await asyncio.sleep(random.uniform(2, 4))
+        comment_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Viết bình luận" or @aria-label="Leave a comment") and @role="button"]')
+        for btn in comment_buttons:
+            if btn.is_displayed() and btn.is_enabled():
+                comment_button = btn
+                break
+        if not comment_button:
+            # Không tìm thấy nút bình luận, bỏ qua
+            return
+        # Scroll nút bình luận vào view
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", comment_button)
+        await asyncio.sleep(2)
+        actions.move_to_element(comment_button)
         actions.click()
         actions.perform()
-        
         # Chọn ngẫu nhiên một bình luận
         comment_text = random.choice(COMMENTS)
         await asyncio.sleep(random.uniform(2, 4))
-        log_message(f" Đang nhập bình luận: {comment_text}")
-        
+        # Tìm comment box để nhập text
+        wait = WebDriverWait(browser, 10)
         comment_box = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
         await asyncio.sleep(1)
+        # Tìm thẻ p trong comment box
         p_tag = comment_box.find_element(By.TAG_NAME, "p")
-        
-        log_message(f" p_tag: {p_tag}")
         await asyncio.sleep(2)
         actions.send_keys_to_element(p_tag, comment_text)
-        
         await asyncio.sleep(random.uniform(2, 4))
         actions.send_keys(Keys.ENTER)
-        actions.perform()
-        
-        log_message(" Bình luận đã được gửi thành công!")
-        
+        actions.perform()   
         await asyncio.sleep(2)
         actions.send_keys(Keys.ESCAPE).perform()
-        
     except Exception as e:
-        log_message(f" Lỗi khi comment: {e}", logging.ERROR)
+        log_message(f"Error in comment_post: {e}", logging.ERROR)
         traceback.print_exc()
-        pass
-    await asyncio.sleep(4)
 
 # Hàm chia sẻ bài viết
-async def share_post(browser,actions):
+async def share_post(browser, actions):
     try:
-        share_button = WebDriverWait(browser, 5).until(EC.presence_of_element_located((By.XPATH, "//div[@aria-label='Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn.'] | //div[@aria-label='Send this to friends or post it on your profile.']")))
-        log_message(f" Tìm thấy nút share: {share_button}")
-        browser.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", share_button)
-        
+        share_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Gửi nội dung này cho bạn bè hoặc đăng lên trang cá nhân của bạn." or @aria-label="Send this to friends or post it on your profile.") and @role="button"]')
+        for btn in share_buttons:
+            if btn.is_displayed() and btn.is_enabled():
+                share_button = btn
+                break
+        if not share_button:
+            return
+        # Scroll nút chia sẻ vào view
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", share_button)
         await asyncio.sleep(2)
-        
+        # Click vào nút chia sẻ
         actions.move_to_element(share_button)
         actions.click()
         actions.perform()
-        
+
         await asyncio.sleep(5)
-        
-        share = browser.find_element(By.XPATH, "//div[@aria-label='Chia sẻ ngay'] | //div[@aria-label='Share now']")
-        log_message(f" Tìm thấy nút chia sẻ: {share}")
-        
-        actions.move_to_element(share)
+        # Tìm và click nút "Chia sẻ ngay"
+        share_now_button = WebDriverWait(browser, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[(@aria-label="Chia sẻ ngay" or @aria-label="Share now") and @role="button"]'))
+        )
+        actions.move_to_element(share_now_button)
         actions.click()
         actions.perform()
-        
-        log_message(f"Đã chia sẻ bài viết thành công")
-    except Exception as err:
-        log_message(f"err share {err}", logging.ERROR)
+        log_message("Đã chia sẻ bài viết thành công!")
+        await asyncio.sleep(random.uniform(2, 3))
+    except Exception as e:
+        log_message(f"Error in share_post: {e}", logging.ERROR)
+        traceback.print_exc()
 
-# Hàm xem video
 async def watch_videos(browser, actions):
     try:
         browser.get("https://www.facebook.com/watch/")
         await asyncio.sleep(random.uniform(3, 6))
-        scroll_count_video = random.randint(6, 15)  # Số lần cuộn
+        scroll_count_video = random.randint(6, 15)  # Số lần cuộn #fix
         while scroll_count_video > 0:
             log_message(f"scroll_count_watch_video {scroll_count_video}")
 
             await asyncio.sleep(random.uniform(4, 7))
 
-            # Lấy danh sách video
-            video_selected = WebDriverWait(browser, 10).until(EC.presence_of_all_elements_located(
-                (By.XPATH, "//div[@class='x1ey2m1c x9f619 xds687c x17qophe x10l6tqk x13vifvy x1ypdohk']")
-            ))
+            # Tìm tất cả video trên trang
+            video_selected = browser.find_elements(By.XPATH, "//div[contains(@class, 'x1ey2m1c') and contains(@class, 'x9f619')]")
 
-            # Lọc video trong tầm nhìn
+            # Lọc các video đang hiển thị
             visible_videos = [video for video in video_selected if video.is_displayed()]
             await asyncio.sleep(random.uniform(40, 60))
 
             if visible_videos:
-                log_message(f"visible_videos: {visible_videos}")
+                log_message(f"Found {len(visible_videos)} visible videos.")
                 current_video = visible_videos[0]
 
                 # Nếu scroll_count_video chia hết cho 7 hoặc 13 thì thực hiện hành động
                 if scroll_count_video % 7 == 0 or scroll_count_video % 13 == 0:
                     if scroll_count_video % 7 == 0:
                         await asyncio.sleep(random.uniform(5, 7))
-                        try:
-                            like_buttons = WebDriverWait(browser, 10).until(
-                                EC.presence_of_all_elements_located((By.XPATH, "//span[@data-ad-rendering-role='like_button'] | //span[@data-ad-rendering-role='thích_button']"))
-                            )
-                            
-                            if like_buttons and like_buttons[0].is_displayed():
-                                browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_buttons[0])
-                                await asyncio.sleep(random.uniform(1, 3))
-                                like_buttons[0].click()
-                                log_message("Liked the post video successfully!")
-                            else:
-                                log_message("Like button is not visible, skipping...")
-                        except Exception as e:
-                            log_message(f"Error clicking like button: {e}")
+                        # Tìm nút like sử dụng selector đã được test thành công
+                        like_buttons = browser.find_elements(By.XPATH, "//span[@data-ad-rendering-role='like_button']")
+                        for btn in like_buttons:
+                            if btn.is_displayed() and btn.is_enabled():
+                                like_button = btn
+                                break
+                        if like_button:
+                            browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+                            await asyncio.sleep(random.uniform(1, 3))
+                            like_button.click()
+                            log_message("Liked the post video successfully!")
+                        else:
+                            log_message("Like button is not visible, skipping...")
 
                     elif scroll_count_video % 13 == 0:
                         await share_post(browser, actions)
@@ -370,45 +404,50 @@ async def watch_videos(browser, actions):
                     # Lấy URL video đã tương tác
                     video_url = browser.current_url
                     log_message(f"current_url: {video_url}")
+            else:
+                log_message("No visible videos found, continuing...")
 
-            # Trừ lượt cuộn
+            # Cuộn trang để xem video tiếp theo
             scroll_count_video -= 1
 
-            # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
+            # Thực hiện cuộn trang với hiệu ứng mượt mà
             current_scroll = browser.execute_script("return window.pageYOffset;")
             target_scroll = current_scroll + random.randint(600, 800)
             await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
-
-            
+                
         log_message("Đã hoàn thành xem video Facebook")
         
     except Exception as err:
         log_message(f"err watch videos {err}", logging.ERROR)
+        traceback.print_exc()
 
 # Hàm tạo bài viết mới
 async def post_news_feed(browser):
     try:
         await asyncio.sleep(random.uniform(5, 8))
         actions = ActionChains(browser)
-        home = WebDriverWait(browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//a[@aria-label='Home'] | //a[@aria-label='Trang chủ']")))
+        # Tim kiếm nút Home
+        home = WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//a[@aria-label='Home' or @aria-label='Trang chủ']"))
+        )
         home.click()
         await asyncio.sleep(random.uniform(5, 8))
+        # Tìm nút tạo bài viết mới (phải dùng @class)
         h3_post = browser.find_element(By.XPATH, "//div[@class='xi81zsa x1lkfr7t xkjl1po x1mzt3pk xh8yej3 x13faqbe']")
         h3_post.click()
+        # Chờ cho hộp thoại tạo bài viết mới xuất hiện
         post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
         await asyncio.sleep(1)
+
         p_tag = post_box.find_element(By.TAG_NAME, "p")
-        
-        log_message(f" p_tag: {p_tag}")
-        
+
         if(p_tag and p_tag.is_displayed()):
             await asyncio.sleep(2)
             actions.send_keys_to_element(p_tag, random.choice(CONTENT_POST))
             await asyncio.sleep(random.uniform(2, 4))
             actions.perform()
             await asyncio.sleep(2)
-            
+            # Tìm nút đăng bài viết
             try:
                 post_new_button = browser.find_element(By.CSS_SELECTOR, "div[aria-label='Đăng']")
             except:
@@ -416,7 +455,6 @@ async def post_news_feed(browser):
             await asyncio.sleep(2)
             post_new_button.click()
             log_message("Đã đăng bài viết thành công!")
-            
         await asyncio.sleep(random.uniform(2, 4))
     except Exception as err:
         log_message(f"err post new feed {err}", logging.ERROR)
@@ -432,15 +470,19 @@ async def list_friend(browser):
         friends_box = browser.find_element(By.XPATH, "//div[@class='x135pmgq']")
         log_message(f"friends_box: {friends_box}")
         await asyncio.sleep(random.uniform(1, 3))
-        friends_link = friends_box.find_elements(By.XPATH, ".//a[@class='x1i10hfl x1qjc9v5 xjbqb8w xjqpnuy xa49m3k xqeqjp1 x2hbi6w x13fuv20 xu3j5b3 x1q0q8m5 x26u7qi x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xdl72j9 x2lah0s xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r x2lwn1j xeuugli xexx8yu x4uap5 x18d9i69 xkhd6sd x1n2onr6 x16tdsg8 x1hl2dhg xggy1nq x1ja2u2z x1t137rt x1q0g3np x87ps6o x1lku1pv x1a2a7pz x1lq5wgf xgqcy7u x30kzoy x9jhf4c x1lliihq']")
-        log_message(f"friends_link: {friends_link}")
+        # Có thể xóa debug log thẻ <a> nếu muốn gọn log
+        friends_link = friends_box.find_elements(By.XPATH, ".//a[contains(@class, 'x1qjc9v5') and contains(@class, 'xjbqb8w') and contains(@class, 'xde0f50') and contains(@class, 'x1lliihq')]")
 
         for link in friends_link:
             link_friend = link.get_attribute('href')
-            list_friend.append(link_friend)
+            if link_friend:
+                list_friend.append(link_friend)
         
         await asyncio.sleep(random.uniform(4, 6))
         log_message(f"list_friend: {list_friend}")
+        if not list_friend:
+            log_message("Không tìm thấy bạn bè nào trong danh sách!", logging.WARNING)
+            return
         await send_message(browser, random.choice(list_friend), random.choice(CONTENT_POST))
         
         
@@ -449,7 +491,7 @@ async def list_friend(browser):
         traceback.print_exc()
         pass
 
-# Hàm nhắn tin
+# Hàm nhắn tin cho một bạn
 async def send_message(browser, link_user, content):
     try:
         browser.get(link_user)
@@ -458,86 +500,135 @@ async def send_message(browser, link_user, content):
         try:
             send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Nhắn tin"]')
         except:
-            send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Message"]')
-        log_message(f"send_button: {send_button}")
+            try:
+                send_button = browser.find_element(By.CSS_SELECTOR, 'div[aria-label="Message"]')
+            except:
+                log_message("Không tìm thấy nút nhắn tin!", logging.ERROR)
+                return
         send_button.click()
         await asyncio.sleep(random.uniform(2, 4))
-        
+        # Tìm ô nhập tin nhắn
+        post_box = None
         try:
-            post_box = WebDriverWait(browser, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
+            post_box = WebDriverWait(browser, 12).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[contenteditable='true'][role='textbox']"))
             )
-        except:
-            post_box = WebDriverWait(browser, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
-            )
+        except Exception as e:
+            # Nếu không tìm thấy, thử lại
+            try:
+                post_box = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Nhắn tin'][contenteditable='true'][role='textbox']"))
+                )
+            except:
+                post_box = WebDriverWait(browser, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div[aria-label='Message'][contenteditable='true'][role='textbox']"))
+                )
         await asyncio.sleep(3)
         p_tag = post_box.find_element(By.TAG_NAME, "p")
-        
         await asyncio.sleep(random.uniform(2, 4))
-        log_message(f" p_tag: {p_tag}")
-        
-        if(p_tag and p_tag.is_displayed()):
+        if p_tag and p_tag.is_displayed():
             actions.send_keys_to_element(p_tag, content)
             await asyncio.sleep(random.uniform(2, 4))
             actions.send_keys(Keys.ENTER)
             actions.perform()
             await asyncio.sleep(2)
-            
-        log_message("Tin nhan đã được gửi thành công!")
-        
+            log_message("Tin nhắn đã được gửi thành công!")
         await asyncio.sleep(2)
         actions.send_keys(Keys.ESCAPE).perform()
-        
     except Exception as err:
         log_message(f"err send_message {err}", logging.ERROR)
         traceback.print_exc()
-        pass
 
-
-# Hàm gửi lời mời kết bạn trong group
 async def add_friend(browser):
     try:
-        browser.get("https://www.facebook.com/search/groups?q={}&filters=eyJwdWJsaWNfZ3JvdXBzOjAiOiJ7XCJuYW1lXCI6XCJwdWJsaWNfZ3JvdXBzXCIsXCJhcmdzXCI6XCJcIn0ifQ%3D%3D".format("tuyển dụng"))
-        await asyncio.sleep(random.uniform(2, 4))
+        log_message("Bắt đầu quy trình thêm bạn bè.", logging.INFO)
 
-        groups_box = browser.find_elements(By.XPATH, '//a[@aria-hidden="true" and contains(@href, "/groups/")]')
-        link_group = random.choice(groups_box).get_attribute("href")
-        browser.get(link_group.rstrip("/") + "/members/near_you")
-        await asyncio.sleep(random.uniform(2, 4))
-        check_status = browser.find_element(By.CSS_SELECTOR,
-                                            "[class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w xeuugli xg83lxy x1h0ha7o x1120s5i x1nn3v0j']")
-        print('status:', check_status.text)
-        
-        
-        # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
-        current_scroll = browser.execute_script("return window.pageYOffset;")
-        target_scroll = current_scroll + random.randint(1000, 3500)
-        await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
-        
+        log_message("Tìm kiếm các nhóm tuyển dụng...", logging.INFO)
+        browser.get("https://www.facebook.com/search/groups?q=tuyển%20dụng")
+        await asyncio.sleep(random.uniform(3, 5))
+        groups_box = browser.find_elements(By.XPATH, '//a[contains(@href, "/groups/") and @aria-hidden="true"]')
+        group_links = [g.get_attribute("href") for g in groups_box if g.is_displayed() and g.get_attribute("href")]
+
+        link_group = random.choice(group_links)
+
+        members_url = link_group.rstrip("/") + "/members"
+        browser.get(members_url)
         await asyncio.sleep(random.uniform(5, 8))
-        link_users = browser.find_elements(By.XPATH, "//a[@class='x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xt0psk2 xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1a2a7pz xkrqix3 x1sur9pj xzsf02u x1pd3egz']")
-        await asyncio.sleep(random.uniform(2, 4))
-        link_user = link_users[random.randint(10, len(link_users) - 1)]
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", link_user)
-        time.sleep(random.uniform(2, 3))
-        link_user.click()
-        await asyncio.sleep(random.uniform(8, 10))
-        try:
-            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Add friend']")
-        except:
-            add_friend_buttons = browser.find_elements(By.XPATH, "//div[@aria-label='Thêm bạn bè']")
-        time.sleep(random.uniform(2, 3))
-        add_friend_buttons[len(add_friend_buttons) - 1].click()
-        time.sleep(random.uniform(2, 3))
-        log_message("Đã gửi lời mời kết bạn thành công!")
-        await send_message(browser, browser.current_url, "Chào bạn, mình là nhân sự bên timviec365, bạn cho mình hỏi là bạn đang đi tìm việc hay là bên tuyển dụng đó ạ? Nếu bạn đang cần tìm ứng viên hoặc đang cần tìm việc làm thì bạn lên trang web timviec365.vn tham khảo nhé.")
-        
-    except Exception as err:
-        log_message(f"err add_friend {err}", logging.ERROR)
-        traceback.print_exc()
-        pass
 
+        for i in range(5):
+            browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            await asyncio.sleep(random.uniform(2, 4))
+
+        add_friend_buttons = browser.find_elements(
+            By.XPATH,
+            "//div[@role='button' and (starts-with(@aria-label, 'Kết bạn với ') or starts-with(@aria-label, 'Add Friend'))]"
+        )
+
+        profile_info_to_add = []
+        for idx, btn in enumerate(add_friend_buttons):
+            try:
+                aria_label = btn.get_attribute('aria-label')
+                user_name = ''
+                if aria_label:
+                    if aria_label.startswith('Kết bạn với '):
+                        user_name = aria_label[len('Kết bạn với '):].strip()
+                    elif aria_label.startswith('Add Friend'):
+                        user_name = aria_label[len('Add Friend'):].strip()
+                
+                profile_link_element = None
+                member_card_xpath = "./ancestor::div[contains(@class, 'x1ja2u2z')][1]"
+                member_card = None
+                member_card = btn.find_element(By.XPATH, member_card_xpath)
+                if member_card:
+                    # Tìm link profile trong member_card
+                    xpath_profile_link = f".//a[@role='link' and (contains(., '{user_name}') or @aria-label='{user_name}') and (contains(@href, '/user/') or contains(@href, 'profile.php?id='))]"
+                    try:
+                        profile_link_element = member_card.find_element(By.XPATH, xpath_profile_link)
+                    except Exception:
+                        # Fallback nếu không tìm thấy bằng tên chính xác
+                        xpath_profile_link = ".//a[@role='link' and (contains(@href, '/user/') or contains(@href, 'profile.php?id='))]"
+                        try:
+                            profile_link_element = member_card.find_element(By.XPATH, xpath_profile_link)
+                        except Exception:
+                            pass # Không tìm thấy link profile nào trong member_card này
+                if profile_link_element:
+                    link_user = profile_link_element.get_attribute('href')
+                    if link_user and not link_user.startswith("http"):
+                        link_user = "https://www.facebook.com" + link_user
+                    
+                    if link_user:
+                        profile_info_to_add.append((link_user, user_name, btn))
+                    else:
+                        log_message(f"Liên kết profile rỗng sau khi tìm thấy phần tử cho '{user_name}'.", logging.WARNING)
+                else:
+                    log_message(f"Không tìm thấy phần tử liên kết profile nào cho '{user_name}'.", logging.WARNING)
+            except Exception as e:
+                log_message(f"Lỗi khi xử lý nút Kết bạn (chung): {e}", logging.ERROR)
+                traceback.print_exc()
+                continue
+
+        if not profile_info_to_add:
+            return
+
+        link_user, user_name, add_btn = random.choice(profile_info_to_add)
+        
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", add_btn)
+        await asyncio.sleep(random.uniform(1, 2))
+        
+        try:
+            add_btn.click()
+            log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name}!", logging.INFO)
+        except Exception as click_err:
+            log_message(f"Không thể click nút 'Kết bạn': {click_err}. Thử click bằng JavaScript.", logging.WARNING)
+            browser.execute_script("arguments[0].click();", add_btn)
+            log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name} (qua JS click)!", logging.INFO)
+
+        await asyncio.sleep(random.uniform(2, 4))
+        await send_message(browser, link_user, "Chào bạn, mình là nhân sự bên timviec365, bạn cho mình hỏi là bạn đang đi tìm việc hay là bên tuyển dụng đó ạ? Nếu bạn đang cần tìm ứng viên hoặc đang cần tìm việc làm thì bạn lên trang web timviec365.vn tham khảo nhé.")
+
+    except Exception as err:
+        log_message(f"Lỗi tổng quát trong hàm add_friend: {err}", logging.ERROR)
+        traceback.print_exc()
 # hàm lướt dạo facebook
 async def surf_facebook(id, title, browser):
     '''hàm này để lướt fb dạo
@@ -553,39 +644,29 @@ async def surf_facebook(id, title, browser):
         await asyncio.sleep(random.uniform(5, 8))  # Chờ trang tải xong
 
     try:
-        time.sleep(random.uniform(5, 8))
-        scroll_count = random.randint(6, 15)  # Số lần cuộn
+        await asyncio.sleep(random.uniform(3, 5))
+        scroll_count = random.randint(14, 15)  # Số lần cuộn
         actions = ActionChains(browser)
-        
-        while scroll_count > 0:
-            log_message(f"scrool_count {scroll_count}")
+        while scroll_count > 0:            
             # Cuộn từ từ (Mô phỏng cuộn chậm dần đều)
             current_scroll = browser.execute_script("return window.pageYOffset;")
             target_scroll = current_scroll + random.randint(600, 1000)
 
-            await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))
-            #thoi gian dung lai de doc tin
+            await smooth_scroll(browser, current_scroll, target_scroll, duration=random.uniform(0.5, 1.5))            
+            # Thoi gian dung lai de doc tin
             await asyncio.sleep(random.uniform(4, 6))
 
             if scroll_count % 13 == 0:
-                await comment_post(browser, actions)
+                # await comment_post(browser, actions)
                 await asyncio.sleep(random.uniform(3, 5))
             elif scroll_count % 7 == 0:
-                await like_post(browser, actions)
+                await react_post(browser)
                 await asyncio.sleep(random.uniform(3, 5))
 
             scroll_count = scroll_count - 1
 
         await asyncio.sleep(random.uniform(2, 5))
         log_message("Đã hoàn thành lướt Facebook")
-        
-        await asyncio.sleep(random.uniform(2, 4))
-        
-
-        try:
-            await watch_videos(browser, actions)
-        except:
-            pass
 
     except Exception as err:
         log_message(f"err {err}", logging.ERROR)
@@ -603,15 +684,42 @@ async def is_logged_in(browser):
         return True
     except Exception:
         return False  # Nếu có lỗi, giả định là chưa đăng nhập
+async def read_notification(browser):
+    """Đọc thông báo mới trên Facebook"""
 
 # **Hàm main() để chạy chương trình**
-async def main():
+async def main(client_user_id_chat="10406031"):
+    browser = None
     try:
         await initialize()
+        #Lấy data từ file user_accounts.json
+        account_data = None
+        try:
+            with open("user_accounts.json", "r", encoding="utf-8") as file:
+                accounts = json.load(file)
+                for acc in accounts:
+                    if acc["user_id_chat"] == client_user_id_chat:
+                        account_data = acc
+                        break
+        except FileNotFoundError:
+            log_message("File user_accounts.json không tồn tại, sử dụng dữ liệu mặc định.", logging.WARNING)
+            return
+        except json.JSONDecodeError:
+            log_message("File user_accounts.json bị hỏng, sử dụng dữ liệu mặc định.", logging.ERROR)
+            return
+        if not account_data:
+            log_message("Không tìm thấy tài khoản nào trong file user_accounts.json.", logging.ERROR)
+            return
+        facebook_username = account_data.get("facebook_username")
+        facebook_password = account_data.get("facebook_password")
+        facebook_2fa_code = account_data.get("facebook_2fa_code", "")
+        if not facebook_username or not facebook_password:
+            log_message("Tài khoản Facebook không hợp lệ trong file user_accounts.json.", logging.ERROR)
+            return
         chrome_options = Options()
         prefs = {"profile.managed_default_content_settings.images": 2}
         chrome_options.add_experimental_option("prefs", prefs)
-        # chrome_options.add_argument("--headless")
+        ## chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
 
@@ -626,10 +734,6 @@ async def main():
         chrome_options.add_argument(f"--window-size={screen_width // 2},{screen_height}")
         service = webdriver.ChromeService(version_main=122)
         browser = webdriver.Chrome(service=service, options=chrome_options)
-        # dang nhap tren fb
-        browser.get("https://facebook.com")
-        await asyncio.sleep(3)
-
         browser.execute_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
@@ -638,11 +742,10 @@ async def main():
             Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
-
-        user_name = "7y9aiidrd9@osxofulk.com"
-        pass_word = "tojo28"
-        code_2fa = ""
-        id_chat = "10502329"
+        # dang nhap tren fb
+        actions = ActionChains(browser)
+        browser.get("https://facebook.com")
+        await asyncio.sleep(3)
         
         if os.path.exists(COOKIE_FILE):
             await load_cookies(browser)
@@ -652,7 +755,7 @@ async def main():
         # Kiểm tra nếu vẫn cần đăng nhập
         if not await is_logged_in(browser):
             log_message("Cookies không hợp lệ hoặc hết hạn, cần đăng nhập lại.")
-            await login(user_name, pass_word, code_2fa, browser)
+            await login(facebook_username, facebook_password, facebook_2fa_code, browser)
             
         await asyncio.sleep(3)
 
@@ -664,12 +767,16 @@ async def main():
             log_message(f'id_fb: {id_fb}')
 
         while True:
-            try:
-                # await surf_facebook("10502329", random.choice(COMMENTS), browser)
-                # await post_news_feed(browser)
-                # await list_friend(browser)
+            try:    
+                await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
+                await asyncio.sleep(random.uniform(2, 4))
+                await watch_videos(browser, actions = ActionChains(browser))
+                await post_news_feed(browser)
+                await asyncio.sleep(random.uniform(2, 4))
+                await list_friend(browser)
+                await asyncio.sleep(random.uniform(2, 4))
                 await add_friend(browser)
-                await asyncio.sleep(random.uniform(2400, 3600))
+                await asyncio.sleep(random.uniform(200, 300))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)
                 traceback.print_exc()

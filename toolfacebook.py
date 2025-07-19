@@ -137,7 +137,7 @@ CONTENT_POST = [
     "Chúng tôi đang tìm kiếm những ứng viên tài năng và đam mê để cùng nhau phát triển sự nghiệp. Nếu bạn muốn thử thách bản thân và khám phá những cơ hội mới, hãy ứng tuyển ngay hôm nay để cùng chúng tôi chinh phục những đỉnh cao mới!",
     "Môi trường làm việc sáng tạo, thân thiện và đầy cơ hội phát triển đang chờ đón bạn. Hãy nhanh chóng nắm bắt cơ hội này và ứng tuyển ngay hôm nay để trở thành một phần của đội ngũ thành công và đầy nhiệt huyết của chúng tôi!",
     "Bạn đang tìm kiếm một công việc đầy thử thách và cơ hội phát triển? Chúng tôi đang chờ đón bạn! Hãy nộp hồ sơ ứng tuyển ngay hôm nay để không bỏ lỡ cơ hội làm việc trong môi trường sáng tạo và đầy triển vọng của chúng tôi!",
-    "Công việc trong mơ của bạn không còn xa! Hãy nhanh chóng ứng tuyển vào vị trí mà chúng tôi đang tìm kiếm để phát triển bản thân trong môi trường năng động và thân thiện. Đừng bỏ lỡ cơ hội này, hãy ứng tuyển ngay hôm nay!",
+    "Công việc mơ ước của bạn không còn xa! Hãy nhanh chóng ứng tuyển vào vị trí mà chúng tôi đang tìm kiếm để phát triển bản thân trong môi trường năng động và thân thiện. Đừng bỏ lỡ cơ hội này, hãy ứng tuyển ngay hôm nay!",
     "Thời tiết hôm này thật thoải mái và dễ chịu, tâm trạng mình cũng rất tốt, cuối cùng mình cũng đạt được mục tiêu của mình. Tiếp tục cố gắng cho những điều tốt đẹp phía trước!"
 ]
 
@@ -313,7 +313,7 @@ async def comment_post(browser, actions):
         actions.send_keys_to_element(p_tag, comment_text)
         await asyncio.sleep(random.uniform(2, 4))
         actions.send_keys(Keys.ENTER)
-        actions.perform()   
+        actions.perform()  
         await asyncio.sleep(2)
         actions.send_keys(Keys.ESCAPE).perform()
     except Exception as e:
@@ -688,38 +688,47 @@ async def read_notification(browser):
     """Đọc thông báo mới trên Facebook"""
 
 # **Hàm main() để chạy chương trình**
-async def main(client_user_id_chat="10406031"):
+async def main(client_user_id_chat):
     browser = None
     try:
-        await initialize()
+        # Kiểm tra tham số đầu vào
+        if not client_user_id_chat:
+            return
+        initialize()
         #Lấy data từ file user_accounts.json
         account_data = None
         try:
             with open("user_accounts.json", "r", encoding="utf-8") as file:
                 accounts = json.load(file)
+                
                 for acc in accounts:
-                    if acc["user_id_chat"] == client_user_id_chat:
+                    acc_user_id = str(acc.get("user_id_chat")) # Đảm bảo cùng kiểu dữ liệu
+                    log_message(f"Kiểm tra tài khoản: user_id_chat={acc_user_id}, note={acc.get('note', 'N/A')}", logging.DEBUG)
+                    if acc_user_id == client_user_id_chat:
                         account_data = acc
                         break
         except FileNotFoundError:
-            log_message("File user_accounts.json không tồn tại, sử dụng dữ liệu mặc định.", logging.WARNING)
+            log_message("File user_accounts.json không tồn tại, chương trình sẽ dừng lại.", logging.ERROR)
             return
         except json.JSONDecodeError:
-            log_message("File user_accounts.json bị hỏng, sử dụng dữ liệu mặc định.", logging.ERROR)
+            log_message("File user_accounts.json bị hỏng, chương trình sẽ dừng lại.", logging.ERROR)
             return
         if not account_data:
-            log_message("Không tìm thấy tài khoản nào trong file user_accounts.json.", logging.ERROR)
+            log_message(f"Tài khoản với user_id_chat '{client_user_id_chat}' không được tìm thấy trong user_accounts.json. Chương trình sẽ không chạy.", logging.ERROR)
             return
         facebook_username = account_data.get("facebook_username")
         facebook_password = account_data.get("facebook_password")
         facebook_2fa_code = account_data.get("facebook_2fa_code", "")
         if not facebook_username or not facebook_password:
-            log_message("Tài khoản Facebook không hợp lệ trong file user_accounts.json.", logging.ERROR)
+            log_message("Thông tin đăng nhập Facebook không đầy đủ trong user_accounts.json. Chương trình sẽ dừng lại.", logging.ERROR)
             return
+        
+        log_message(f"Đang chạy tool cho tài khoản: {facebook_username} (User ID Chat: {client_user_id_chat})", logging.INFO)
+
         chrome_options = Options()
         prefs = {"profile.managed_default_content_settings.images": 2}
         chrome_options.add_experimental_option("prefs", prefs)
-        ## chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
 
@@ -748,14 +757,22 @@ async def main(client_user_id_chat="10406031"):
         await asyncio.sleep(3)
         
         if os.path.exists(COOKIE_FILE):
-            await load_cookies(browser)
-            browser.refresh()
-            await asyncio.sleep(4)
+            # load_cookies trả về True/False, nên có thể dùng trực tiếp
+            if await load_cookies(browser):
+                browser.refresh()
+                await asyncio.sleep(4)
+            else:
+                log_message("Tải cookies thất bại hoặc không có cookies hợp lệ. Tiến hành đăng nhập mới.", logging.INFO)
 
         # Kiểm tra nếu vẫn cần đăng nhập
         if not await is_logged_in(browser):
             log_message("Cookies không hợp lệ hoặc hết hạn, cần đăng nhập lại.")
+            # Hàm login gốc không trả về giá trị, giả định nó thành công nếu không có ngoại lệ
             await login(facebook_username, facebook_password, facebook_2fa_code, browser)
+            # Sau khi login, kiểm tra lại trạng thái đăng nhập
+            if not await is_logged_in(browser):
+                log_message("Đăng nhập thất bại sau khi thử. Chương trình sẽ dừng lại.", logging.ERROR)
+                return
             
         await asyncio.sleep(3)
 
@@ -768,7 +785,8 @@ async def main(client_user_id_chat="10406031"):
 
         while True:
             try:    
-                await surf_facebook("100087230611083", random.choice(COMMENTS), browser)
+                # surf_facebook gốc có 3 tham số, giữ nguyên để không thay đổi logic cũ
+                await surf_facebook("", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
                 await watch_videos(browser, actions = ActionChains(browser))
                 await post_news_feed(browser)
@@ -780,11 +798,28 @@ async def main(client_user_id_chat="10406031"):
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)
                 traceback.print_exc()
-                continue
+                log_message("Có lỗi xảy ra, chương trình sẽ dừng lại.", logging.ERROR)
+                break
 
     except Exception as err:
-        log_message(f'err in main:{err}', logging.ERROR)
+        traceback.print_exc()
+    finally:
+        if browser:
+            try:
+                browser.quit()
+                log_message("Đã đóng browser.", logging.INFO)
+            except:
+                pass
+        log_message("Chương trình đã kết thúc.", logging.INFO)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Lấy user_id_chat từ command line arguments
+    if len(sys.argv) > 1:
+        client_user_id_chat = sys.argv[1]
+        print(f"Starting tool with user_id_chat: {client_user_id_chat}")
+    else:
+        print("Usage: python toolfacebook.py <user_id_chat>")
+        sys.exit(1)
+    
+    asyncio.run(main(client_user_id_chat))

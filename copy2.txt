@@ -163,16 +163,6 @@ async def connect_websocket():
                         # Set flag để dừng lướt và chuyển sang bình luận
                         stop_browsing = True
                         log_message("Đã set flag để dừng lướt và chuyển sang bình luận", logging.INFO)
-                    elif data.get("type") == "reply_reply_comment":
-                        log_message(f"Nhận được yêu cầu trả lời reply comment từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
-                        log_message(f"URL: {data.get('URL', 'N/A')}", logging.INFO)
-                        log_message(f"CommentId: {data.get('commentId', 'N/A')}", logging.INFO)
-                        log_message(f"ReplyId: {data.get('replyId', 'N/A')}", logging.INFO)
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang trả lời reply
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang trả lời reply", logging.INFO)
                     elif data.get("type") == "register_success":
                         log_message("Đăng ký WebSocket thành công!", logging.INFO)
                     else:
@@ -719,36 +709,6 @@ async def comment_on_post_url(browser):
         except:
             pass
 
-# Hàm tìm container chứa comment cụ thể
-async def find_comment_container(browser, comment_id):
-    """
-    Tìm container chứa comment với ID cụ thể
-    """
-    
-    try:
-        log_message(f"🔍 Đang tìm container chứa commentId: {comment_id}", logging.INFO)
-        
-        # Tìm theo href chứa comment_id
-        comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id}')]")
-        if comment_links:
-            # Tìm container cha chứa link này
-            for link in comment_links:
-                try:
-                    # Tìm container cha có class chính xác là x18xomjl xbcz3fp chứa bình luận
-                    container = link.find_element(By.XPATH, "./ancestor::div[@class='x18xomjl xbcz3fp'][1]")
-                    if container:
-                        log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp chứa commentId", logging.INFO)
-                        return container
-                except Exception:
-                    continue
-        
-            log_message(f"❌ Không tìm thấy container chứa commentId: {comment_id}", logging.ERROR)
-        return None
-        
-    except Exception as e:
-        log_message(f"❌ Lỗi khi tìm container bình luận: {e}", logging.ERROR)
-        return None
-
 # Hàm trả lời bình luận
 async def reply_to_comment(browser):
     """
@@ -756,14 +716,6 @@ async def reply_to_comment(browser):
     """
     try:
         global pending_posts, current_client_id
-        
-        # Khởi tạo biến để tránh lỗi UnboundLocalError
-        reply_url = None
-        reply_id = None
-        comment_url = ""
-        reply_content = ""
-        comment_id_from_websocket = ""
-        post_id_from_websocket = None
         
         if not pending_posts:
             log_message("❌ Không có dữ liệu reply_comment trong pending_posts", logging.ERROR)
@@ -798,54 +750,38 @@ async def reply_to_comment(browser):
         comment_container = None
         
         try:
-            # Phương pháp 1: Tìm theo href chứa comment_id, sau đó mở rộng đến container cha có class x18xomjl xbcz3fp
+            # Phương pháp 1: Tìm theo href chứa comment_id
             comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id_from_websocket}')]")
             if comment_links:
                 # Tìm container cha chứa link này
                 for link in comment_links:
                     try:
-                        # Tìm container cha có class chính xác là x18xomjl xbcz3fp (chứa cả comment và replies)
-                        container = link.find_element(By.XPATH, "./ancestor::div[@class='x18xomjl xbcz3fp'][1]")
+                        # Tìm container cha chứa bình luận (thường có class chứa comment)
+                        container = link.find_element(By.XPATH, "./ancestor::div[contains(@class, 'comment') or contains(@data-ft, 'comment') or .//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]][1]")
                         if container:
                             comment_container = container
-                            log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp chứa commentId", logging.INFO)
+                            log_message(f"🎯 Tìm thấy container chứa commentId bằng href", logging.INFO)
                             break
                     except Exception:
-                        # Fallback: Tìm container thông thường
-                        try:
-                            container = link.find_element(By.XPATH, "./ancestor::div[contains(@class, 'comment') or contains(@data-ft, 'comment') or .//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]][1]")
-                            if container:
-                                comment_container = container
-                                log_message(f"🎯 Tìm thấy container chứa commentId bằng href (fallback)", logging.INFO)
-                                break
-                        except Exception:
-                            continue
+                        continue
             
-            # Phương pháp 2: Tìm theo data-ft attribute, sau đó mở rộng đến container cha
+            # Phương pháp 2: Tìm theo data-ft attribute 
             if not comment_container:
                 containers = browser.find_elements(By.XPATH, f"//div[contains(@data-ft, '{comment_id_from_websocket}')]")
                 for container in containers:
                     try:
-                        # Tìm container cha có class chính xác là x18xomjl xbcz3fp
-                        parent_container = container.find_element(By.XPATH, "./ancestor-or-self::div[@class='x18xomjl xbcz3fp'][1]")
-                        if parent_container:
-                            comment_container = parent_container
-                            log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp bằng data-ft", logging.INFO)
+                        # Kiểm tra xem container này có nút Trả lời không
+                        reply_btn = container.find_element(By.XPATH, ".//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]")
+                        if reply_btn:
+                            comment_container = container
+                            log_message(f"🎯 Tìm thấy container chứa commentId bằng data-ft", logging.INFO)
                             break
                     except Exception:
-                        # Fallback: Kiểm tra xem container này có nút Trả lời không
-                        try:
-                            reply_btn = container.find_element(By.XPATH, ".//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]")
-                            if reply_btn:
-                                comment_container = container
-                                log_message(f"🎯 Tìm thấy container chứa commentId bằng data-ft (fallback)", logging.INFO)
-                                break
-                        except Exception:
-                            continue
+                        continue
             
-            # Phương pháp 3: Tìm tất cả container có nút Trả lời, sau đó tìm container cha x18xomjl xbcz3fp
+            # Phương pháp 3: Tìm tất cả container có nút Trả lời, sau đó check từng cái
             if not comment_container:
-                log_message("🔍 Tìm bằng cách kiểm tra từng container có nút Trả lời và mở rộng đến cha x18xomjl xbcz3fp...", logging.INFO)
+                log_message("🔍 Tìm bằng cách kiểm tra từng container có nút Trả lời...", logging.INFO)
                 reply_containers = browser.find_elements(By.XPATH, "//div[.//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]]")
                 
                 for container in reply_containers:
@@ -853,17 +789,9 @@ async def reply_to_comment(browser):
                         # Kiểm tra xem container này có chứa commentId không
                         container_html = container.get_attribute('outerHTML')
                         if comment_id_from_websocket in container_html:
-                            # Tìm container cha có class chính xác là x18xomjl xbcz3fp
-                            try:
-                                parent_container = container.find_element(By.XPATH, "./ancestor-or-self::div[@class='x18xomjl xbcz3fp'][1]")
-                                comment_container = parent_container
-                                log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp bằng cách check HTML", logging.INFO)
-                                break
-                            except Exception:
-                                # Fallback: Sử dụng container hiện tại
-                                comment_container = container
-                                log_message(f"🎯 Tìm thấy container chứa commentId bằng cách check HTML (fallback)", logging.INFO)
-                                break
+                            comment_container = container
+                            log_message(f"🎯 Tìm thấy container chứa commentId bằng cách check HTML", logging.INFO)
+                            break
                     except Exception:
                         continue
                         
@@ -996,122 +924,51 @@ async def reply_to_comment(browser):
                 try:
                     log_message("🔍 Đang tìm timestamp của reply trong container...", logging.INFO)
                     
-                    # Khởi tạo biến reply_url và reply_id
-                    reply_url = None
-                    reply_id = None
+                    # Tìm timestamp mới nhất trong container này
+                    timestamp_elements = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'comment_id') or contains(@href, 'reply_comment_id')]")
                     
-                    # Đợi một chút để reply xuất hiện trong DOM
-                    await asyncio.sleep(2)
-                    
-                    # Tìm lại comment container để có phần tử mới
-                    comment_container = await find_comment_container(browser, comment_id_from_websocket)
-                    if not comment_container:
-                        log_message("❌ Không tìm thấy comment container sau khi reply", logging.WARNING)
-                        return
-                    
-                    # Tìm tất cả timestamp, ưu tiên reply_comment_id
-                    reply_timestamps = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
-                    
-                    #===============================================================
-                    # Debug: In ra tất cả reply timestamps
-                    log_message(f"🔍 DEBUG: Tìm thấy {len(reply_timestamps)} reply timestamps:", logging.INFO)
-                    for i, ts in enumerate(reply_timestamps):
-                        href = ts.get_attribute('href')
-                        text = ts.text.strip() if ts.text else "No text"
-                        log_message(f"  {i+1}. Reply timestamp: {href} | Text: '{text}'", logging.INFO)
-                    
-                    # Debug: Tìm TẤT CẢ các link trong container để xem cấu trúc
-                    all_links = comment_container.find_elements(By.XPATH, ".//a[@href]")
-                    log_message(f"🔍 DEBUG: Tìm thấy {len(all_links)} tất cả links trong container:", logging.INFO)
-                    for i, link in enumerate(all_links):
-                        href = link.get_attribute('href')
-                        text = link.text.strip() if link.text else "No text"
-                        log_message(f"  {i+1}. Link: {href} | Text: '{text}'", logging.INFO)
-                    
-                    # Debug: In HTML của container để xem cấu trúc thực tế
-                    container_html = comment_container.get_attribute('outerHTML')
-                    log_message(f"🔍 DEBUG: HTML của container (500 ký tự đầu):", logging.INFO)
-                    log_message(f"{container_html[:500]}...", logging.INFO)
-                    
-                    # Debug: Tìm tất cả các XPath pattern khác nhau
-                    patterns_to_test = [
-                        ".//a[contains(@href, 'reply_comment_id')]",
-                        ".//a[contains(@href, 'reply_comment')]", 
-                        ".//a[contains(@href, 'reply')]",
-                        ".//a[contains(@href, '1545288619990006')]",  # ID cụ thể từ URL
-                        ".//a[contains(text(), 'phút') or contains(text(), 'giờ') or contains(text(), 'ngày')]"
-                    ]
-                    
-                    for pattern in patterns_to_test:
+                    if timestamp_elements:
+                        # Lấy timestamp cuối cùng (mới nhất) trong container
+                        timestamp_element = timestamp_elements[-1]
+                        log_message(f"🎯 Tìm thấy timestamp trong container: {timestamp_element.get_attribute('href')}", logging.INFO)
+                        
+                        # Scroll vào view và click
+                        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
+                        await asyncio.sleep(1)
+                        
                         try:
-                            test_elements = comment_container.find_elements(By.XPATH, pattern)
-                            log_message(f"🔍 DEBUG: Pattern '{pattern}' tìm thấy {len(test_elements)} elements", logging.INFO)
-                            for j, elem in enumerate(test_elements):
-                                href = elem.get_attribute('href') or "No href"
-                                text = elem.text.strip() if elem.text else "No text"
-                                log_message(f"    {j+1}. {href} | Text: '{text}'", logging.INFO)
-                        except Exception as pattern_err:
-                            log_message(f"❌ Lỗi pattern '{pattern}': {pattern_err}", logging.WARNING)
-                    
-                    #===============================================================
-
-                    if reply_timestamps:
-                        # Lấy timestamp reply mới nhất
-                        timestamp_element = reply_timestamps[-1]
-                        log_message(f"🎯 Tìm thấy reply timestamp: {timestamp_element.get_attribute('href')}", logging.INFO)
-                    else:
-                        # Nếu không có reply_comment_id, tìm tất cả timestamp và lấy mới nhất
-                        all_timestamps = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'comment_id')]")
-                        
-                        # Debug: In ra tất cả timestamps
-                        log_message(f"🔍 DEBUG: Tìm thấy {len(all_timestamps)} timestamps chứa comment_id:", logging.INFO)
-                        for i, ts in enumerate(all_timestamps):
-                            href = ts.get_attribute('href')
-                            text = ts.text.strip() if ts.text else "No text"
-                            log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
-                        
-                        if all_timestamps:
-                            timestamp_element = all_timestamps[-1]
-                            log_message(f"🎯 Tìm thấy timestamp (fallback): {timestamp_element.get_attribute('href')}", logging.INFO)
-                        else:
-                            log_message("❌ Không tìm thấy timestamp nào", logging.WARNING)
-                            return
-                    
-                    # Scroll vào view và click
-                    browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
-                    await asyncio.sleep(1)
-                    
-                    try:
-                        timestamp_element.click()
-                        await asyncio.sleep(2)
+                            timestamp_element.click()
+                            await asyncio.sleep(2)
                             
-                        # Kiểm tra URL có thay đổi không
-                        current_url = browser.current_url
-                        if "comment_id" in current_url or "reply_comment_id" in current_url:
-                            log_message(f"✅ Click timestamp thành công! URL mới: {current_url}", logging.INFO)
-                            reply_url = current_url
+                            # Kiểm tra URL có thay đổi không
+                            current_url = browser.current_url
+                            if "comment_id" in current_url or "reply_comment_id" in current_url:
+                                log_message(f"✅ Click timestamp thành công! URL mới: {current_url}", logging.INFO)
+                                reply_url = current_url
                                 
-                            # Trích xuất reply_id từ URL
-                            reply_id_patterns = [
-                                r'reply_comment_id=(\d+)',
-                                r'comment_id=(\d+)',
-                                r'cft\[0\]=(\d+)'
-                            ]
+                                # Trích xuất reply_id từ URL
+                                reply_id_patterns = [
+                                    r'reply_comment_id=(\d+)',
+                                    r'comment_id=(\d+)',
+                                    r'cft\[0\]=(\d+)'
+                                ]
                                 
-                            for pattern in reply_id_patterns:
-                                try:
-                                    reply_id_match = re.search(pattern, reply_url)
-                                    if reply_id_match:
-                                        reply_id = reply_id_match.group(1)
-                                        log_message(f"🎯 Lấy được Reply ID: {reply_id}", logging.INFO)
-                                        break
-                                except Exception as pattern_err:
-                                    log_message(f"❌ Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
-                        else:
-                            log_message("❌ URL không thay đổi sau khi click timestamp", logging.WARNING)
+                                for pattern in reply_id_patterns:
+                                    try:
+                                        reply_id_match = re.search(pattern, reply_url)
+                                        if reply_id_match:
+                                            reply_id = reply_id_match.group(1)
+                                            log_message(f"🎯 Lấy được Reply ID: {reply_id}", logging.INFO)
+                                            break
+                                    except Exception as pattern_err:
+                                        log_message(f"❌ Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
+                            else:
+                                log_message("❌ URL không thay đổi sau khi click timestamp", logging.WARNING)
                                 
-                    except Exception as click_err:
-                        log_message(f"❌ Lỗi khi click timestamp reply: {click_err}", logging.WARNING)
+                        except Exception as click_err:
+                            log_message(f"❌ Lỗi khi click timestamp reply: {click_err}", logging.WARNING)
+                    else:
+                        log_message("❌ Không tìm thấy timestamp reply trong container", logging.WARNING)
                         
                 except Exception as reply_id_error:
                     log_message(f"❌ Lỗi khi lấy reply_id: {reply_id_error}", logging.ERROR)
@@ -1200,446 +1057,6 @@ async def reply_to_comment(browser):
                 
                 if 'comment_id_from_websocket' in locals() and comment_id_from_websocket:
                     error_result["commentId"] = comment_id_from_websocket
-                
-                if 'post_id_from_websocket' in locals() and post_id_from_websocket:
-                    error_result["postId"] = post_id_from_websocket
-                
-                async def send_error_result():
-                    try:
-                        async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            if current_client_id:
-                                register_message = {
-                                    "type": "register",
-                                    "role": "B", 
-                                    "clientId": current_client_id
-                                }
-                                await websocket.send(json.dumps(register_message))
-                                await asyncio.sleep(0.5)
-                            
-                            await websocket.send(json.dumps(error_result))
-                            log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
-                    except:
-                        pass
-                
-                await send_error_result()
-        except:
-            pass
-
-
-# Hàm trả lời reply comment (reply to reply)
-async def reply_to_reply_comment(browser):
-    """
-    Hàm trả lời reply comment cụ thể dựa vào URL, commentId và replyId
-    """
-    try:
-        global pending_posts, current_client_id
-        
-        # Khởi tạo biến để tránh lỗi UnboundLocalError
-        reply_to_reply_url = None
-        reply_to_reply_id = None
-        comment_url = ""
-        reply_content = ""
-        comment_id_from_websocket = ""
-        reply_id_from_websocket = ""
-        post_id_from_websocket = None
-        
-        if not pending_posts:
-            log_message("❌ Không có dữ liệu reply_reply_comment trong pending_posts", logging.ERROR)
-            return
-        
-        # Lấy dữ liệu từ WebSocket
-        reply_data = pending_posts[0]
-        pending_posts.pop(0)
-        
-        comment_url = reply_data.get("URL", "")
-        reply_content = reply_data.get("content", "")
-        comment_id_from_websocket = reply_data.get("commentId", "")
-        reply_id_from_websocket = reply_data.get("replyId", "")
-        post_id_from_websocket = reply_data.get("postId", None)
-        
-        log_message(f"🔄 Bắt đầu trả lời reply comment có CommentID: {comment_id_from_websocket}, ReplyID: {reply_id_from_websocket}", logging.INFO)
-        log_message(f"🔗 URL: {comment_url}", logging.INFO)
-        log_message(f"💬 Nội dung trả lời: {reply_content}", logging.INFO)
-        if post_id_from_websocket:
-            log_message(f"📋 PostId từ WebSocket: {post_id_from_websocket}", logging.INFO)
-        
-        if not comment_url or not reply_content or not comment_id_from_websocket or not reply_id_from_websocket:
-            log_message("❌ Thiếu URL, nội dung trả lời, commentId hoặc replyId", logging.ERROR)
-            return
-        
-        # Điều hướng đến URL
-        log_message("🌐 Đang điều hướng đến URL...", logging.INFO)
-        browser.get(comment_url)
-        await asyncio.sleep(random.uniform(3, 5))
-        
-        # Tìm container chứa commentId và replyId cần trả lời
-        log_message(f"🔍 Đang tìm container chứa CommentId: {comment_id_from_websocket} và ReplyId: {reply_id_from_websocket}", logging.INFO)
-        reply_container = None
-        
-        try:
-            # Phương pháp 1: Tìm theo href chứa reply_comment_id
-            reply_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
-            if reply_links:
-                for lidx, link in enumerate(reply_links):
-                    outer_html = link.get_attribute('outerHTML')
-                    log_message(f"[DEBUG] reply_link {lidx} outerHTML: {outer_html[:500]}...", logging.INFO)
-                log_message(f"[DEBUG] Tìm thấy {len(reply_links)} reply_links với reply_comment_id={reply_id_from_websocket}", logging.INFO)
-                # Tìm container cha chứa link reply này
-                found = False
-                for lidx, link in enumerate(reply_links):
-                    if found:
-                        break
-                    log_message(f"[DEBUG] Đang mở rộng ancestor cho reply_link {lidx}", logging.INFO)
-                    ancestors = link.find_elements(By.XPATH, "./ancestor::*")
-                    for aidx, ancestor in enumerate(ancestors):
-                        tag_name = ancestor.tag_name
-                        class_attr = ancestor.get_attribute('class')
-                        log_message(f"    [DEBUG] Ancestor {aidx}: tag='{tag_name}', class='{class_attr}'", logging.INFO)
-                    try:
-                        # Tìm tất cả ancestor có class chính xác
-                        ancestors = link.find_elements(By.XPATH, "./ancestor::div")
-                        for idx, container in enumerate(ancestors):
-                            if found:
-                                break
-                            class_attr = container.get_attribute('class')
-                            tag_name = container.tag_name
-                            log_message(f"    [DEBUG] Ancestor {idx}: tag='{tag_name}', class='{class_attr}'", logging.INFO)
-                            if class_attr == 'html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl':
-                                check_links = container.find_elements(By.XPATH, f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
-                                if check_links:
-                                    reply_container = container
-                                    log_message(f"🎯 Tìm thấy container cha CHÍNH XÁC cho replyId: {reply_id_from_websocket}", logging.INFO)
-                                    found = True
-                                    break
-                    except Exception:
-                        try:
-                            if found:
-                                break
-                            container = link.find_element(By.XPATH, "./ancestor::div[contains(@class, 'comment') or contains(@data-ft, 'comment') or .//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]][1]")
-                            if container:
-                                check_links = container.find_elements(By.XPATH, f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
-                                if check_links:
-                                    reply_container = container
-                                    log_message(f"🎯 Tìm thấy container chứa ReplyId bằng href (fallback)", logging.INFO)
-                                    found = True
-                                    break
-                        except Exception:
-                            continue
-            
-            # Phương pháp 2: Tìm theo data-ft attribute
-            if not reply_container:
-                containers = browser.find_elements(By.XPATH, f"//div[contains(@data-ft, '{reply_id_from_websocket}')]")
-                for container in containers:
-                    try:
-                        # Tìm container cha có class chính xác là html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl
-                        parent_container = container.find_element(By.XPATH, "./ancestor-or-self::div[@class='html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl'][1]")
-                        if parent_container:
-                            reply_container = parent_container
-                            log_message(f"🎯 Tìm thấy container cha có class chính xác html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl bằng data-ft", logging.INFO)
-                            break
-                        log_message(f"🔍 DEBUG 2: Đang thử selector tìm nút trả lời: {selector}", logging.INFO)
-                    except Exception:
-                        log_message(f"🔍 DEBUG: Tìm thấy {len(reply_buttons)} nút trả lời với selector này", logging.INFO)
-                        # Fallback: Kiểm tra xem container này có nút Trả lời không
-                        btn_text = btn.text.strip() if btn.text else ""
-                        btn_aria_label = btn.get_attribute('aria-label') or ""
-                        log_message(f"    Button: Text='{btn_text}', Aria-label='{btn_aria_label}', Displayed={btn.is_displayed()}, Enabled={btn.is_enabled()}", logging.INFO)
-                        try:
-                            reply_btn = container.find_element(By.XPATH, ".//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]")
-                            log_message(f"🎯 Chọn nút trả lời này để thao tác!", logging.INFO)
-                            if reply_btn:
-                                log_message(f"✅ Đã tìm thấy nút trả lời phù hợp với selector: {selector}", logging.INFO)
-                                reply_container = container
-                                log_message(f"🎯 Tìm thấy container chứa ReplyId bằng data-ft (fallback)", logging.INFO)
-                                log_message(f"❌ Lỗi khi thử selector '{selector}': {e}", logging.WARNING)
-                                break
-                        except Exception:
-                            continue
-            
-    
-                        
-        except Exception as e:
-            log_message(f"❌ Lỗi khi tìm container reply: {e}", logging.ERROR)
-        
-        if not reply_container:
-            log_message(f"❌ Không tìm thấy container chứa CommentId: {comment_id_from_websocket} và ReplyId: {reply_id_from_websocket}", logging.ERROR)
-            return
-        
-        # Tìm nút Trả lời trong container đó (tìm nút trả lời gần với reply cụ thể)
-        reply_button = None
-        try:
-            # Tìm nút Trả lời cụ thể gần với reply có replyId
-            reply_selectors = [
-                f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]/following::div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))][1]",
-                f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]/ancestor::div[1]//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))][1]",
-
-            ]
-            
-            for selector in reply_selectors:
-                try:
-                    log_message(f"🔍 DEBUG: Đang thử selector tìm nút trả lời: {selector}", logging.INFO)
-                    reply_buttons = reply_container.find_elements(By.XPATH, selector)
-                    log_message(f"🔍 DEBUG: Tìm thấy {len(reply_buttons)} nút trả lời với selector này", logging.INFO)
-                    for btn in reply_buttons:
-                        btn_text = btn.text.strip() if btn.text else ""
-                        btn_aria_label = btn.get_attribute('aria-label') or ""
-                        log_message(f"    Button: Text='{btn_text}', Aria-label='{btn_aria_label}', Displayed={btn.is_displayed()}, Enabled={btn.is_enabled()}", logging.INFO)
-                        if btn.is_displayed() and btn.is_enabled():
-                            reply_button = btn
-                            log_message(f"🎯 Chọn nút trả lời này để thao tác!", logging.INFO)
-                            break
-                    if reply_button:
-                        log_message(f"✅ Đã tìm thấy nút trả lời phù hợp với selector: {selector}", logging.INFO)
-                        break
-                except Exception as e:
-                    log_message(f"❌ Lỗi khi thử selector '{selector}': {e}", logging.WARNING)
-                    continue
-                        
-        except Exception as e:
-            log_message(f"❌ Lỗi khi tìm nút Trả lời trong container: {e}", logging.ERROR)
-        
-        if not reply_button:
-            log_message("❌ Không tìm thấy nút Trả lời trong container reply", logging.ERROR)
-            return
-        
-        # Click vào nút trả lời
-        log_message("👆 Đang click nút Trả lời cho reply...", logging.INFO)
-        try:
-            # Scroll vào view trước
-            browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reply_button)
-            await asyncio.sleep(1)
-            
-            # Thử nhiều cách click
-            click_success = False
-            for attempt in range(3):
-                try:
-                    if attempt == 0:
-                        reply_button.click()
-                    elif attempt == 1:
-                        browser.execute_script("arguments[0].click();", reply_button)
-                    elif attempt == 2:
-                        ActionChains(browser).move_to_element(reply_button).click().perform()
-                    
-                    click_success = True
-                    log_message(f"✅ Click nút Trả lời thành công (cách {attempt + 1})", logging.INFO)
-                    break
-                except Exception as click_err:
-                    log_message(f"❌ Click attempt {attempt + 1} thất bại: {click_err}", logging.WARNING)
-                    await asyncio.sleep(0.5)
-            
-            if not click_success:
-                log_message("❌ Không thể click nút Trả lời sau 3 lần thử", logging.ERROR)
-                return
-                
-        except Exception as e:
-            log_message(f"❌ Lỗi khi click nút Trả lời: {e}", logging.ERROR)
-            return
-        
-        await asyncio.sleep(2)
-        
-        # Tìm reply box (comment box mới xuất hiện)
-        log_message("🔍 Đang tìm reply box...", logging.INFO)
-        reply_box = None
-        try:
-            wait = WebDriverWait(browser, 10)
-            reply_boxes = browser.find_elements(By.CSS_SELECTOR, 'div[contenteditable="true"]')
-            
-            # Lấy reply box đầu tiên (thay vì cuối cùng)
-            for box in reply_boxes:
-                if box.is_displayed():
-                    reply_box = box
-                    log_message("🎯 Đã tìm thấy reply box đầu tiên", logging.INFO)
-                    break
-            
-            if not reply_box:
-                # Thử cách khác
-                reply_box = browser.find_element(By.XPATH, '//div[@contenteditable="true" and @role="textbox"]')
-                log_message("🎯 Đã tìm thấy reply box (cách 2)", logging.INFO)
-        except:
-            log_message("❌ Không tìm thấy reply box", logging.ERROR)
-            return
-        
-        if not reply_box:
-            log_message("❌ Không thể tìm thấy reply box", logging.ERROR)
-            return
-        
-        await asyncio.sleep(1)
-        
-        # Nhập nội dung trả lời
-        try:
-            p_tag = reply_box.find_element(By.TAG_NAME, "p")
-            if p_tag and p_tag.is_displayed():
-                log_message("💬 Đang nhập nội dung trả lời reply...", logging.INFO)
-                
-                # Click vào p_tag trước khi nhập
-                p_tag.click()
-                await asyncio.sleep(1)
-                
-                # Nhập nội dung trả lời
-                actions = ActionChains(browser)
-                actions.send_keys_to_element(p_tag, reply_content)
-                await asyncio.sleep(random.uniform(2, 4))
-                
-                # Gửi trả lời bằng cách nhấn Enter
-                actions.send_keys(Keys.ENTER)
-                actions.perform()
-                
-                log_message("✅ Đã gửi trả lời reply thành công!", logging.INFO)
-                await asyncio.sleep(3)
-                
-                # Tìm timestamp của reply to reply trong container cụ thể
-                try:
-                    log_message("🔍 Đang tìm timestamp của reply to reply trong container...", logging.INFO)
-                    
-                    # Khởi tạo biến reply_to_reply_url và reply_to_reply_id
-                    reply_to_reply_url = None
-                    reply_to_reply_id = None
-                    
-                    # Đợi một chút để reply xuất hiện trong DOM
-                    await asyncio.sleep(2)
-                    
-                    # Tìm lại reply container để có phần tử mới
-                    await asyncio.sleep(1)
-                    
-                    # Tìm tất cả timestamp mới nhất, ưu tiên reply_comment_id
-                    new_reply_timestamps = reply_container.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
-                    
-                    if new_reply_timestamps:
-                        # Lấy timestamp reply mới nhất (cuối cùng)
-                        timestamp_element = new_reply_timestamps[-1]
-                        log_message(f"🎯 Tìm thấy reply to reply timestamp: {timestamp_element.get_attribute('href')}", logging.INFO)
-                        
-                        # Scroll vào view và click
-                        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
-                        await asyncio.sleep(1)
-                        
-                        try:
-                            timestamp_element.click()
-                            await asyncio.sleep(2)
-                                
-                            # Kiểm tra URL có thay đổi không
-                            current_url = browser.current_url
-                            if "reply_comment_id" in current_url:
-                                log_message(f"✅ Click timestamp thành công! URL mới: {current_url}", logging.INFO)
-                                reply_to_reply_url = current_url
-                                    
-                                # Trích xuất reply_to_reply_id từ URL
-                                reply_id_patterns = [
-                                    r'reply_comment_id=(\d+)',
-                                    r'comment_id=(\d+)',
-                                    r'cft\[0\]=(\d+)'
-                                ]
-                                    
-                                for pattern in reply_id_patterns:
-                                    try:
-                                        reply_id_match = re.search(pattern, reply_to_reply_url)
-                                        if reply_id_match:
-                                            reply_to_reply_id = reply_id_match.group(1)
-                                            log_message(f"🎯 Lấy được Reply to Reply ID: {reply_to_reply_id}", logging.INFO)
-                                            break
-                                    except Exception as pattern_err:
-                                        log_message(f"❌ Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
-                            else:
-                                log_message("❌ URL không thay đổi sau khi click timestamp", logging.WARNING)
-                                    
-                        except Exception as click_err:
-                            log_message(f"❌ Lỗi khi click timestamp reply to reply: {click_err}", logging.WARNING)
-                    else:
-                        log_message("❌ Không tìm thấy timestamp reply to reply nào", logging.WARNING)
-                        
-                except Exception as reply_id_error:
-                    log_message(f"❌ Lỗi khi lấy reply to reply id: {reply_id_error}", logging.ERROR)
-                
-                # Gửi thông báo thành công về bên A qua WebSocket
-                try:
-                    reply_to_reply_result = {
-                        "type": "reply_reply_comment_result",
-                        "status": "success",
-                        "URL": comment_url,
-                        "reply_content": reply_content,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    
-                    # Thêm reply_to_reply_url và reply_to_reply_id nếu lấy được
-                    if reply_to_reply_url:
-                        reply_to_reply_result["reply_to_reply_url"] = reply_to_reply_url
-                        log_message(f"📤 Thêm reply_to_reply_url vào kết quả: {reply_to_reply_url}", logging.INFO)
-                    
-                    if reply_to_reply_id:
-                        reply_to_reply_result["reply_to_reply_id"] = reply_to_reply_id
-                        log_message(f"📤 Thêm reply_to_reply_id vào kết quả: {reply_to_reply_id}", logging.INFO)
-                    
-                    # Thêm các ID từ WebSocket
-                    if comment_id_from_websocket:
-                        reply_to_reply_result["commentId"] = comment_id_from_websocket
-                        log_message(f"✅ Đã thêm commentId vào kết quả: {comment_id_from_websocket}", logging.INFO)
-                    
-                    if reply_id_from_websocket:
-                        reply_to_reply_result["replyId"] = reply_id_from_websocket
-                        log_message(f"✅ Đã thêm replyId vào kết quả: {reply_id_from_websocket}", logging.INFO)
-                    
-                    if post_id_from_websocket:
-                        reply_to_reply_result["postId"] = post_id_from_websocket
-                        log_message(f"✅ Đã thêm postId vào kết quả: {post_id_from_websocket}", logging.INFO)
-                    
-                    # Gửi kết quả qua WebSocket
-                    async def send_reply_to_reply_result():
-                        try:
-                            async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # Sử dụng lại clientId đã đăng ký
-                                if current_client_id:
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B", 
-                                        "clientId": current_client_id
-                                    }
-                                    
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                    await asyncio.sleep(0.5)
-                                
-                                # Gửi kết quả trả lời reply
-                                await websocket.send(json.dumps(reply_to_reply_result))
-                                log_message("✅ Đã gửi kết quả trả lời reply về bên A!", logging.INFO)
-                        except Exception as ws_error:
-                            log_message(f"❌ Lỗi khi gửi kết quả qua WebSocket: {ws_error}", logging.ERROR)
-                    
-                    await send_reply_to_reply_result()
-                    
-                except Exception as result_error:
-                    log_message(f"❌ Lỗi khi chuẩn bị gửi kết quả: {result_error}", logging.ERROR)
-            else:
-                log_message("❌ Không tìm thấy thẻ p trong reply box", logging.ERROR)
-        except Exception as input_error:
-            log_message(f"❌ Lỗi khi nhập nội dung trả lời reply: {input_error}", logging.ERROR)
-        
-        # Nhấn ESC để thoát
-        try:
-            actions.send_keys(Keys.ESCAPE).perform()
-        except:
-            pass
-            
-    except Exception as e:
-        log_message(f"❌ Lỗi trong hàm reply_to_reply_comment: {e}", logging.ERROR)
-        traceback.print_exc()
-        
-        # Gửi thông báo lỗi về bên A
-        try:
-            if 'comment_url' in locals() and 'reply_content' in locals():
-                error_result = {
-                    "type": "reply_reply_comment_result",
-                    "status": "error",
-                    "URL": comment_url,
-                    "reply_content": reply_content,
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                if 'comment_id_from_websocket' in locals() and comment_id_from_websocket:
-                    error_result["commentId"] = comment_id_from_websocket
-                
-                if 'reply_id_from_websocket' in locals() and reply_id_from_websocket:
-                    error_result["replyId"] = reply_id_from_websocket
                 
                 if 'post_id_from_websocket' in locals() and post_id_from_websocket:
                     error_result["postId"] = post_id_from_websocket
@@ -2814,9 +2231,6 @@ async def main(client_user_id_chat):
                     elif pending_posts[0].get("type") == "reply_comment":
                         log_message("Có yêu cầu trả lời bình luận từ WebSocket, dừng TẤT CẢ hoạt động và trả lời ngay lập tức", logging.INFO)
                         await reply_to_comment(browser)
-                    elif pending_posts[0].get("type") == "reply_reply_comment":
-                        log_message("Có yêu cầu trả lời reply comment từ WebSocket, dừng TẤT CẢ hoạt động và trả lời reply ngay lập tức", logging.INFO)
-                        await reply_to_reply_comment(browser)
                     else:
                         log_message(f"Loại dữ liệu không xác định từ WebSocket: {pending_posts[0].get('type')}", logging.WARNING)
                         pending_posts.pop(0)  # Xóa dữ liệu không xác định

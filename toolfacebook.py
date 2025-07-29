@@ -4,6 +4,11 @@ import time
 import traceback
 import json
 import os
+import re
+import time
+import logging
+from datetime import datetime
+import os
 import logging
 import sys
 import websockets
@@ -32,6 +37,7 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 # Constants
 COOKIE_FILE = "fb_cookies.json"
 WEBSOCKET_URL = "ws://localhost:3001"
+POST_STRUCTURE_FILE = "post_structure.json"
 
 # Queue để lưu nội dung từ WebSocket
 pending_posts = []
@@ -94,26 +100,188 @@ REACTIONS = [
     {"name": "Angry", "xpath": '//div[@aria-label="Phẫn nộ"] | //div[@aria-label="Angry"]'}
 ]
 
+# Hàm lấy tên Facebook từ user_accounts.json
+def get_facebook_name():
+    """Lấy tên Facebook từ file user_accounts.json"""
+    try:
+        with open("user_accounts.json", "r", encoding="utf-8") as f:
+            accounts = json.load(f)
+            if isinstance(accounts, list) and len(accounts) > 0:
+                # Lấy tài khoản đầu tiên (hoặc có thể chọn theo logic khác)
+                acc = accounts[0]
+                # Ưu tiên nameFb, nếu không có thì dùng note
+                if "nameFb" in acc and acc["nameFb"]:
+                    return acc["nameFb"]
+                elif "note" in acc and acc["note"]:
+                    return acc["note"]
+                else:
+                    return "Unknown"
+            return "Unknown"
+    except Exception as e:
+        log_message(f"Không thể đọc tên từ user_accounts.json: {e}", logging.WARNING)
+        return "Unknown"
+
+# Hàm quản lý cấu trúc bài viết
+def load_post_structure():
+    """Load cấu trúc bài viết từ file JSON"""
+    try:
+        if os.path.exists(POST_STRUCTURE_FILE):
+            with open(POST_STRUCTURE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {"posts": {}}
+    except Exception as e:
+        log_message(f"Lỗi khi load post structure: {e}", logging.ERROR)
+        return {"posts": {}}
+
+def save_post_structure(data):
+    """Lưu cấu trúc bài viết vào file JSON"""
+    try:
+        with open(POST_STRUCTURE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        log_message("Đã lưu post structure thành công", logging.INFO)
+    except Exception as e:
+        log_message(f"Lỗi khi lưu post structure: {e}", logging.ERROR)
+
+def add_post_to_structure(post_url, post_id=None):
+    """Thêm post mới vào cấu trúc"""
+    try:
+        data = load_post_structure()
+        
+        # Extract post ID from URL if not provided
+        if not post_id:
+            post_id_match = re.search(r'posts/(\d+)', post_url)
+            if post_id_match:
+                post_id = post_id_match.group(1)
+            else:
+                post_id = post_url  # Use full URL as fallback
+        
+        if post_id not in data["posts"]:
+            data["posts"][post_id] = {
+                "url": post_url,
+                "post_id": post_id,
+                "comments": {},
+                "created_at": datetime.now().isoformat()
+            }
+            save_post_structure(data)
+            log_message(f"✅ Đã thêm post mới vào structure: {post_id}", logging.INFO)
+        
+        return post_id
+    except Exception as e:
+        log_message(f"Lỗi khi thêm post vào structure: {e}", logging.ERROR)
+        return None
+
+def add_comment_to_structure(post_id,comment_fb_id=None, comment_content=""):
+    """Thêm comment vào cấu trúc post"""
+    try:
+        data = load_post_structure()
+        
+        if post_id in data["posts"]:
+            if comment_fb_id not in data["posts"][post_id]["comments"]:
+                data["posts"][post_id]["comments"][comment_fb_id] = {
+                    "comment_fb_id": comment_fb_id,
+                    "content": comment_content,
+                    "replies": {},
+                    "created_at": datetime.now().isoformat()
+                }
+                save_post_structure(data)
+                log_message(f"✅ Đã thêm comment vào structure: {comment_fb_id}", logging.INFO)
+        
+        return comment_fb_id
+    except Exception as e:
+        log_message(f"Lỗi khi thêm comment vào structure: {e}", logging.ERROR)
+        return None
+
+def add_reply_to_structure(post_id, comment_id, reply_fb_id, reply_content=""):
+    """Thêm reply vào cấu trúc comment"""
+    try:
+        data = load_post_structure()
+        
+        if post_id in data["posts"] and comment_id in data["posts"][post_id]["comments"]:
+            if reply_fb_id not in data["posts"][post_id]["comments"][comment_id]["replies"]:
+                data["posts"][post_id]["comments"][comment_id]["replies"][reply_fb_id] = {
+                    "reply_fb_id": reply_fb_id,
+                    "content": reply_content,
+                    "created_at": datetime.now().isoformat()
+                }
+                save_post_structure(data)
+                log_message(f"✅ Đã thêm reply vào structure: {reply_fb_id}", logging.INFO)
+        
+        return reply_fb_id
+    except Exception as e:
+        log_message(f"Lỗi khi thêm reply vào structure: {e}", logging.ERROR)
+        return None
+
+def check_comment_exists(post_id, comment_content):
+    """Kiểm tra comment đã tồn tại trong post chưa"""
+    try:
+        data = load_post_structure()
+        
+        if post_id in data["posts"]:
+            for comment_id, comment_data in data["posts"][post_id]["comments"].items():
+                if comment_data.get("content", "").strip() == comment_content.strip():
+                    log_message(f"⚠️ Comment đã tồn tại: {comment_id}", logging.WARNING)
+                    return True
+        
+        return False
+    except Exception as e:
+        log_message(f"Lỗi khi kiểm tra comment: {e}", logging.ERROR)
+        return False
+
+def check_reply_exists(post_id, comment_id, reply_content):
+    """Kiểm tra reply đã tồn tại trong comment chưa"""
+    try:
+        data = load_post_structure()
+        
+        if post_id in data["posts"] and comment_id in data["posts"][post_id]["comments"]:
+            for reply_id, reply_data in data["posts"][post_id]["comments"][comment_id]["replies"].items():
+                if reply_data.get("content", "").strip() == reply_content.strip():
+                    log_message(f"⚠️ Reply đã tồn tại: {reply_id}", logging.WARNING)
+                    return True
+        
+        return False
+    except Exception as e:
+        log_message(f"Lỗi khi kiểm tra reply: {e}", logging.ERROR)
+        return False
+
+def get_post_structure_info(post_id):
+    """Lấy thông tin cấu trúc của post"""
+    try:
+        data = load_post_structure()
+        return data["posts"].get(post_id, None)
+    except Exception as e:
+        log_message(f"Lỗi khi lấy thông tin post structure: {e}", logging.ERROR)
+        return None
+
 # Hàm kết nối WebSocket để nhận nội dung mới
 async def connect_websocket():
     """Kết nối WebSocket để nhận nội dung bài viết mới"""
     global stop_browsing, current_client_id
     
     try:
+        # Đọc role từ user_accounts.json
+        role_websocket = "A"  # Mặc định
+        try:
+            with open("user_accounts.json", "r", encoding="utf-8") as f:
+                accounts = json.load(f)
+                if isinstance(accounts, list) and len(accounts) > 0:
+                    # Lấy roleWebSocket của tài khoản đầu tiên (hoặc có thể chọn theo logic khác)
+                    acc = accounts[0]
+                    if "roleWebSocket" in acc and acc["roleWebSocket"]:
+                        role_websocket = acc["roleWebSocket"]
+        except Exception as e:
+            log_message(f"Không thể đọc roleWebSocket từ user_accounts.json, dùng mặc định 'B': {e}", logging.WARNING)
+
         async with websockets.connect(WEBSOCKET_URL) as websocket:
             log_message("Đã kết nối thành công tới WebSocket server!", logging.INFO)
-            
-            # Đăng ký với server với role 'B'
             import time
-            current_client_id = f"clientB_{int(time.time() * 1000)}"
+            current_client_id = f"client{role_websocket}_{int(time.time() * 1000)}"
             register_message = {
                 "type": "register",
-                "role": "B",
+                "role": role_websocket,
                 "clientId": current_client_id
             }
-            
             await websocket.send(json.dumps(register_message))
-            log_message(f"Đã gửi tin nhắn đăng ký với role 'B' và clientId: {current_client_id}", logging.INFO)
+            log_message(f"Đã gửi tin nhắn đăng ký với role '{role_websocket}' và clientId: {current_client_id}", logging.INFO)
             
             # Lắng nghe tin nhắn từ server
             async for message in websocket:
@@ -294,6 +462,9 @@ async def login(username, password, code_2fa, browser):
         if '"userID":' in browser.page_source:
             log_message("Login successful!")
             await save_cookies(browser)
+            # Reload Facebook homepage after successful login
+            browser.get("https://facebook.com/")
+            await asyncio.sleep(3)
     except Exception as e:
         log_message(f"Login failed: {e}",logging.ERROR)
 
@@ -443,6 +614,21 @@ async def comment_on_post_url(browser):
         log_message(f"💬 Nội dung bình luận: {comment_content[:50]}...", logging.INFO)
         if post_id_from_websocket:
             log_message(f"📋 PostId từ WebSocket: {post_id_from_websocket}", logging.INFO)
+        
+        # Sử dụng post_id từ WebSocket hoặc extract từ URL
+        extracted_post_id = post_id_from_websocket
+        if not extracted_post_id:
+            # Thử extract post_id từ URL nếu không có từ WebSocket
+            post_id_match = re.search(r'posts/(\d+)', post_url)
+            if post_id_match:
+                extracted_post_id = post_id_match.group(1)
+            else:
+                extracted_post_id = post_url  # Use full URL as fallback
+        
+        # Kiểm tra comment đã tồn tại chưa
+        if extracted_post_id and check_comment_exists(extracted_post_id, comment_content):
+            log_message("⚠️ Comment này đã tồn tại trong post, bỏ qua việc bình luận", logging.WARNING)
+            return
         
         # Truy cập URL bài viết
         browser.get(post_url)
@@ -599,6 +785,9 @@ async def comment_on_post_url(browser):
                             if comment_id_match:
                                 comment_id = comment_id_match.group(1)
                                 log_message(f"🎯 THÀNH CÔNG - Comment ID: {comment_id}", logging.INFO)
+                                
+                                # Lưu comment vào cấu trúc dữ liệu
+                                add_comment_to_structure(extracted_post_id, comment_id, comment_content)
                             else:
                                 log_message("❌ Không tìm thấy comment_id trong URL", logging.WARNING)
                                 
@@ -623,12 +812,13 @@ async def comment_on_post_url(browser):
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
                     comment_result = {
-                        "type": "comment_result",
+                        "type": "comment_result",   
                         "status": "success",
-                        "URL": post_url,
+                        "URL": current_url,
                         "content": comment_content,
+                        "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
-                    }
+                    }   
                     
                     # Thêm comment_id nếu lấy được
                     if comment_id:
@@ -688,8 +878,9 @@ async def comment_on_post_url(browser):
                 error_result = {
                     "type": "comment_result",
                     "status": "error",
-                    "URL": post_url,
+                    "URL": current_url,
                     "content": comment_content,
+                    "authorName": get_facebook_name(),
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
                 }
@@ -788,6 +979,22 @@ async def reply_to_comment(browser):
             log_message("❌ Thiếu URL hoặc nội dung trả lời", logging.ERROR)
             return
         
+        # Sử dụng post_id từ WebSocket hoặc extract từ URL
+        extracted_post_id = post_id_from_websocket
+        if not extracted_post_id:
+            # Thử extract post_id từ URL nếu không có từ WebSocket
+            post_id_match = re.search(r'posts/(\d+)', comment_url)
+            if post_id_match:
+                extracted_post_id = post_id_match.group(1)
+            else:
+                extracted_post_id = comment_url  # Use full URL as fallback
+        
+        # Kiểm tra reply đã tồn tại chưa (nếu có post_id và comment_id)
+        if extracted_post_id and comment_id_from_websocket:
+            if check_reply_exists(extracted_post_id, comment_id_from_websocket, reply_content):
+                log_message("⚠️ Reply này đã tồn tại trong comment, bỏ qua việc reply", logging.WARNING)
+                return
+        
         # Điều hướng đến URL bình luận
         log_message("🌐 Đang điều hướng đến URL bình luận...", logging.INFO)
         browser.get(comment_url)
@@ -798,7 +1005,7 @@ async def reply_to_comment(browser):
         comment_container = None
         
         try:
-            # Phương pháp 1: Tìm theo href chứa comment_id, sau đó mở rộng đến container cha có class x18xomjl xbcz3fp
+            # Tìm theo href chứa comment_id, sau đó mở rộng đến container cha có class x18xomjl xbcz3fp
             comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id_from_websocket}')]")
             if comment_links:
                 # Tìm container cha chứa link này
@@ -821,51 +1028,6 @@ async def reply_to_comment(browser):
                         except Exception:
                             continue
             
-            # Phương pháp 2: Tìm theo data-ft attribute, sau đó mở rộng đến container cha
-            if not comment_container:
-                containers = browser.find_elements(By.XPATH, f"//div[contains(@data-ft, '{comment_id_from_websocket}')]")
-                for container in containers:
-                    try:
-                        # Tìm container cha có class chính xác là x18xomjl xbcz3fp
-                        parent_container = container.find_element(By.XPATH, "./ancestor-or-self::div[@class='x18xomjl xbcz3fp'][1]")
-                        if parent_container:
-                            comment_container = parent_container
-                            log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp bằng data-ft", logging.INFO)
-                            break
-                    except Exception:
-                        # Fallback: Kiểm tra xem container này có nút Trả lời không
-                        try:
-                            reply_btn = container.find_element(By.XPATH, ".//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]")
-                            if reply_btn:
-                                comment_container = container
-                                log_message(f"🎯 Tìm thấy container chứa commentId bằng data-ft (fallback)", logging.INFO)
-                                break
-                        except Exception:
-                            continue
-            
-            # Phương pháp 3: Tìm tất cả container có nút Trả lời, sau đó tìm container cha x18xomjl xbcz3fp
-            if not comment_container:
-                log_message("🔍 Tìm bằng cách kiểm tra từng container có nút Trả lời và mở rộng đến cha x18xomjl xbcz3fp...", logging.INFO)
-                reply_containers = browser.find_elements(By.XPATH, "//div[.//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời'))]]")
-                
-                for container in reply_containers:
-                    try:
-                        # Kiểm tra xem container này có chứa commentId không
-                        container_html = container.get_attribute('outerHTML')
-                        if comment_id_from_websocket in container_html:
-                            # Tìm container cha có class chính xác là x18xomjl xbcz3fp
-                            try:
-                                parent_container = container.find_element(By.XPATH, "./ancestor-or-self::div[@class='x18xomjl xbcz3fp'][1]")
-                                comment_container = parent_container
-                                log_message(f"🎯 Tìm thấy container cha có class chính xác x18xomjl xbcz3fp bằng cách check HTML", logging.INFO)
-                                break
-                            except Exception:
-                                # Fallback: Sử dụng container hiện tại
-                                comment_container = container
-                                log_message(f"🎯 Tìm thấy container chứa commentId bằng cách check HTML (fallback)", logging.INFO)
-                                break
-                    except Exception:
-                        continue
                         
         except Exception as e:
             log_message(f"❌ Lỗi khi tìm container bình luận: {e}", logging.ERROR)
@@ -1011,49 +1173,6 @@ async def reply_to_comment(browser):
                     
                     # Tìm tất cả timestamp, ưu tiên reply_comment_id
                     reply_timestamps = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
-                    
-                    #===============================================================
-                    # Debug: In ra tất cả reply timestamps
-                    log_message(f"🔍 DEBUG: Tìm thấy {len(reply_timestamps)} reply timestamps:", logging.INFO)
-                    for i, ts in enumerate(reply_timestamps):
-                        href = ts.get_attribute('href')
-                        text = ts.text.strip() if ts.text else "No text"
-                        log_message(f"  {i+1}. Reply timestamp: {href} | Text: '{text}'", logging.INFO)
-                    
-                    # Debug: Tìm TẤT CẢ các link trong container để xem cấu trúc
-                    all_links = comment_container.find_elements(By.XPATH, ".//a[@href]")
-                    log_message(f"🔍 DEBUG: Tìm thấy {len(all_links)} tất cả links trong container:", logging.INFO)
-                    for i, link in enumerate(all_links):
-                        href = link.get_attribute('href')
-                        text = link.text.strip() if link.text else "No text"
-                        log_message(f"  {i+1}. Link: {href} | Text: '{text}'", logging.INFO)
-                    
-                    # Debug: In HTML của container để xem cấu trúc thực tế
-                    container_html = comment_container.get_attribute('outerHTML')
-                    log_message(f"🔍 DEBUG: HTML của container (500 ký tự đầu):", logging.INFO)
-                    log_message(f"{container_html[:500]}...", logging.INFO)
-                    
-                    # Debug: Tìm tất cả các XPath pattern khác nhau
-                    patterns_to_test = [
-                        ".//a[contains(@href, 'reply_comment_id')]",
-                        ".//a[contains(@href, 'reply_comment')]", 
-                        ".//a[contains(@href, 'reply')]",
-                        ".//a[contains(@href, '1545288619990006')]",  # ID cụ thể từ URL
-                        ".//a[contains(text(), 'phút') or contains(text(), 'giờ') or contains(text(), 'ngày')]"
-                    ]
-                    
-                    for pattern in patterns_to_test:
-                        try:
-                            test_elements = comment_container.find_elements(By.XPATH, pattern)
-                            log_message(f"🔍 DEBUG: Pattern '{pattern}' tìm thấy {len(test_elements)} elements", logging.INFO)
-                            for j, elem in enumerate(test_elements):
-                                href = elem.get_attribute('href') or "No href"
-                                text = elem.text.strip() if elem.text else "No text"
-                                log_message(f"    {j+1}. {href} | Text: '{text}'", logging.INFO)
-                        except Exception as pattern_err:
-                            log_message(f"❌ Lỗi pattern '{pattern}': {pattern_err}", logging.WARNING)
-                    
-                    #===============================================================
 
                     if reply_timestamps:
                         # Lấy timestamp reply mới nhất
@@ -1116,13 +1235,22 @@ async def reply_to_comment(browser):
                 except Exception as reply_id_error:
                     log_message(f"❌ Lỗi khi lấy reply_id: {reply_id_error}", logging.ERROR)
                 
+                # Lưu reply vào cấu trúc dữ liệu nếu có đủ thông tin
+                if extracted_post_id and comment_id_from_websocket and reply_id:
+                    add_reply_to_structure(extracted_post_id, comment_id_from_websocket, reply_id, reply_content)
+                elif extracted_post_id and comment_id_from_websocket:
+                    # Lưu với reply_id tạm thời nếu không lấy được reply_id từ URL
+                    temp_reply_id = f"temp_reply_{int(time.time() * 1000)}"
+                    add_reply_to_structure(extracted_post_id, comment_id_from_websocket, temp_reply_id, reply_content)
+                
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
                     reply_comment_result = {
                         "type": "reply_comment_result",
                         "status": "success",
-                        "URL": comment_url,
+                        "URL": reply_url,
                         "reply_content": reply_content,
+                        "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
                     }
                     
@@ -1194,6 +1322,7 @@ async def reply_to_comment(browser):
                     "status": "error",
                     "URL": comment_url,
                     "reply_content": reply_content,
+                    "authorName": get_facebook_name(),
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
                 }
@@ -1267,6 +1396,22 @@ async def reply_to_reply_comment(browser):
             log_message("❌ Thiếu URL, nội dung trả lời, commentId hoặc replyId", logging.ERROR)
             return
         
+        # Sử dụng post_id từ WebSocket hoặc extract từ URL
+        extracted_post_id = post_id_from_websocket
+        if not extracted_post_id:
+            # Thử extract post_id từ URL nếu không có từ WebSocket
+            post_id_match = re.search(r'posts/(\d+)', comment_url)
+            if post_id_match:
+                extracted_post_id = post_id_match.group(1)
+            else:
+                extracted_post_id = comment_url  # Use full URL as fallback
+        
+        # Kiểm tra reply đã tồn tại chưa (kiểm tra với cả comment_id và reply_id)
+        if extracted_post_id and comment_id_from_websocket:
+            if check_reply_exists(extracted_post_id, comment_id_from_websocket, reply_content):
+                log_message("⚠️ Reply này đã tồn tại, bỏ qua việc reply to reply", logging.WARNING)
+                return
+        
         # Điều hướng đến URL
         log_message("🌐 Đang điều hướng đến URL...", logging.INFO)
         browser.get(comment_url)
@@ -1280,21 +1425,13 @@ async def reply_to_reply_comment(browser):
             # Phương pháp 1: Tìm theo href chứa reply_comment_id
             reply_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
             if reply_links:
-                for lidx, link in enumerate(reply_links):
-                    outer_html = link.get_attribute('outerHTML')
-                    log_message(f"[DEBUG] reply_link {lidx} outerHTML: {outer_html[:500]}...", logging.INFO)
-                log_message(f"[DEBUG] Tìm thấy {len(reply_links)} reply_links với reply_comment_id={reply_id_from_websocket}", logging.INFO)
                 # Tìm container cha chứa link reply này
                 found = False
                 for lidx, link in enumerate(reply_links):
                     if found:
                         break
-                    log_message(f"[DEBUG] Đang mở rộng ancestor cho reply_link {lidx}", logging.INFO)
                     ancestors = link.find_elements(By.XPATH, "./ancestor::*")
-                    for aidx, ancestor in enumerate(ancestors):
-                        tag_name = ancestor.tag_name
-                        class_attr = ancestor.get_attribute('class')
-                        log_message(f"    [DEBUG] Ancestor {aidx}: tag='{tag_name}', class='{class_attr}'", logging.INFO)
+
                     try:
                         # Tìm tất cả ancestor có class chính xác
                         ancestors = link.find_elements(By.XPATH, "./ancestor::div")
@@ -1303,7 +1440,6 @@ async def reply_to_reply_comment(browser):
                                 break
                             class_attr = container.get_attribute('class')
                             tag_name = container.tag_name
-                            log_message(f"    [DEBUG] Ancestor {idx}: tag='{tag_name}', class='{class_attr}'", logging.INFO)
                             if class_attr == 'html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl':
                                 check_links = container.find_elements(By.XPATH, f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
                                 if check_links:
@@ -1336,10 +1472,8 @@ async def reply_to_reply_comment(browser):
                         if parent_container:
                             reply_container = parent_container
                             log_message(f"🎯 Tìm thấy container cha có class chính xác html-div xdj266r x14z9mp xat24cr x1lziwak xexx8yu xyri2b x18d9i69 x1c1uobl bằng data-ft", logging.INFO)
-                            break
-                        log_message(f"🔍 DEBUG 2: Đang thử selector tìm nút trả lời: {selector}", logging.INFO)
+                            break        
                     except Exception:
-                        log_message(f"🔍 DEBUG: Tìm thấy {len(reply_buttons)} nút trả lời với selector này", logging.INFO)
                         # Fallback: Kiểm tra xem container này có nút Trả lời không
                         btn_text = btn.text.strip() if btn.text else ""
                         btn_aria_label = btn.get_attribute('aria-label') or ""
@@ -1550,6 +1684,14 @@ async def reply_to_reply_comment(browser):
                 except Exception as reply_id_error:
                     log_message(f"❌ Lỗi khi lấy reply to reply id: {reply_id_error}", logging.ERROR)
                 
+                # Lưu reply vào cấu trúc dữ liệu nếu có đủ thông tin
+                if extracted_post_id and comment_id_from_websocket and reply_to_reply_id:
+                    add_reply_to_structure(extracted_post_id, comment_id_from_websocket, reply_to_reply_id, reply_content)
+                elif extracted_post_id and comment_id_from_websocket:
+                    # Lưu với reply_id tạm thời nếu không lấy được reply_to_reply_id từ URL
+                    temp_reply_id = f"temp_reply_to_reply_{int(time.time() * 1000)}"
+                    add_reply_to_structure(extracted_post_id, comment_id_from_websocket, temp_reply_id, reply_content)
+                
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
                     reply_to_reply_result = {
@@ -1557,6 +1699,7 @@ async def reply_to_reply_comment(browser):
                         "status": "success",
                         "URL": comment_url,
                         "reply_content": reply_content,
+                        "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
                     }
                     
@@ -1631,6 +1774,7 @@ async def reply_to_reply_comment(browser):
                     "status": "error",
                     "URL": comment_url,
                     "reply_content": reply_content,
+                    "authorName": get_facebook_name(),
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
                 }
@@ -2171,47 +2315,24 @@ async def post_news_feed(browser):
             if post_url:
                 log_message(f"✅ THÀNH CÔNG - Post URL: {post_url}", logging.INFO)
                 
+                # Lưu post vào cấu trúc dữ liệu ngay sau khi lấy được URL
+                try:
+                    saved_post_id = add_post_to_structure(post_url, post_id_from_websocket)
+                    if saved_post_id:
+                        log_message(f"✅ Đã lưu post vào cấu trúc dữ liệu với ID: {saved_post_id}", logging.INFO)
+                    else:
+                        log_message("⚠️ Không thể lưu post vào cấu trúc dữ liệu", logging.WARNING)
+                except Exception as save_error:
+                    log_message(f"❌ Lỗi khi lưu post vào cấu trúc dữ liệu: {save_error}", logging.ERROR)
+                
                 # Gửi thông tin URL về cho bên A qua WebSocket
                 try:
-                    
-                    # Lấy tên tác giả từ trang hiện tại (có thể lấy từ title hoặc meta)
-                    author_name = "Unknown"
-                    try:
-                        # Tìm tên tác giả trong thẻ có class cụ thể (thẻ đầu tiên)
-                        try:
-                            author_elements = browser.find_elements(By.XPATH, "//span[@class='x1lliihq x6ikm8r x10wlt62 x1n2onr6']")
-                            if author_elements:
-                                author_name = author_elements[0].text.strip()
-                                log_message(f"✅ Lấy tên tác giả từ class cụ thể: {author_name}", logging.INFO)
-                        except:
-                            log_message("❌ Không tìm thấy tên từ class cụ thể", logging.WARNING)
-                        
-                        # Nếu không lấy được từ class, thử lấy từ title trang
-                        if author_name == "Unknown" or not author_name:
-                            try:
-                                page_title = browser.title
-                                if " | Facebook" in page_title:
-                                    author_name = page_title.replace(" | Facebook", "").strip()
-                                elif "Facebook" not in page_title:
-                                    author_name = page_title.strip()
-                                
-                                # Xử lý trường hợp title có dạng "Tên - Nội dung khác"
-                                if " - " in author_name:
-                                    author_name = author_name.split(" - ")[0].strip()
-                                    log_message(f"📋 Đã tách tên từ title (trước dấu -): {author_name}", logging.INFO)
-                                else:
-                                    log_message(f"📋 Lấy tên tác giả từ title: {author_name}", logging.INFO)
-                            except:
-                                pass
-                        
-                    except:
-                        author_name = "Unknown"
                     
                     # Tạo dữ liệu để gửi
                     url_data = {
                         "type": "URL_post",
                         "URL": post_url,
-                        "authorName": author_name,
+                        "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
                     }
                     
@@ -2618,6 +2739,7 @@ async def add_friend(browser):
     except Exception as err:
         log_message(f"Lỗi tổng quát trong hàm add_friend: {err}", logging.ERROR)
         traceback.print_exc()
+
 # hàm lướt dạo facebook
 async def surf_facebook(id, title, browser):
     '''hàm này để lướt fb dạo
@@ -2696,6 +2818,7 @@ async def is_logged_in(browser):
         return True
     except Exception:
         return False  # Nếu có lỗi, giả định là chưa đăng nhập
+
 async def read_notification(browser):
     """Đọc thông báo mới trên Facebook"""
 

@@ -5,7 +5,9 @@
     "facebook_username": "gianvu17607@gmail.com",
     "facebook_password": "lvqh1234",
     "facebook_2fa_code": "",
-    "note": "Chị Dung"
+    "note": "Chị Dung",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   },
   {
     "user_id_QLC": "22789191",
@@ -13,7 +15,9 @@
     "facebook_username": "pncmgv3ai1@tidissajiiu.com",
     "facebook_password": "5samiul29",
     "facebook_2fa_code": "",
-    "note": "Chị Nhạn"
+    "note": "Chị Nhạn",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   },
   {
     "user_id_QLC": "22616467",
@@ -21,7 +25,9 @@
     "facebook_username": "6lw7cuwzb4@vafyxh.com",
     "facebook_password": "5samiul29",
     "facebook_2fa_code": "",
-    "note": "Chị Linh"
+    "note": "Chị Linh",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   },
   {
     "user_id_QLC": "22636101",
@@ -29,7 +35,9 @@
     "facebook_username": "xqiexghxt7@vwhins.com",
     "facebook_password": "orko@29",
     "facebook_2fa_code": "",
-    "note": "Chị Thùy"
+    "note": "Chị Thùy",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   },
   {
     "user_id_QLC": "22854836",
@@ -37,7 +45,9 @@
     "facebook_username": "ywtzc31ziq@smykwb.com",
     "facebook_password": "Tanha28",
     "facebook_2fa_code": "",
-    "note": "Chị Ngân"
+    "note": "Chị Ngân",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   },
   {
     "user_id_QLC": "22814414",
@@ -45,6 +55,8 @@
     "facebook_username": "ggr81d87cc@qejjyl.com",
     "facebook_password": "mizan29",
     "facebook_2fa_code": "",
-    "note": "Chị Ngọc"
+    "note": "Chị Ngọc",
+    "roleWebSocket":"B",
+    "nameFb": "Giản Vũ"
   }
 ]

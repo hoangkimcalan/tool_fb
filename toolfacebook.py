@@ -45,6 +45,8 @@ pending_posts = []
 stop_browsing = False
 # Lưu client_id để sử dụng lại khi gửi URL
 current_client_id = None
+# Lưu thông tin tài khoản hiện tại
+current_account_data = None
 COMMENTS = [
     "Danh sách ứng viên trên Timviec365 thật sự rất chất lượng!",
     "Bạn nào đã sử dụng Timviec365 chưa? Đánh giá thế nào?",
@@ -100,26 +102,70 @@ REACTIONS = [
     {"name": "Angry", "xpath": '//div[@aria-label="Phẫn nộ"] | //div[@aria-label="Angry"]'}
 ]
 
-# Hàm lấy tên Facebook từ user_accounts.json
+# Hàm lấy thông tin tài khoản hiện tại từ user_accounts.json
+def get_current_account():
+    """Lấy thông tin tài khoản hiện tại từ biến global current_account_data"""
+    global current_account_data
+    return current_account_data
+
+# Hàm lấy tên Facebook từ tài khoản hiện tại
 def get_facebook_name():
-    """Lấy tên Facebook từ file user_accounts.json"""
+    """Lấy tên Facebook từ tài khoản hiện tại trong user_accounts.json"""
     try:
-        with open("user_accounts.json", "r", encoding="utf-8") as f:
-            accounts = json.load(f)
-            if isinstance(accounts, list) and len(accounts) > 0:
-                # Lấy tài khoản đầu tiên (hoặc có thể chọn theo logic khác)
-                acc = accounts[0]
-                # Ưu tiên nameFb, nếu không có thì dùng note
-                if "nameFb" in acc and acc["nameFb"]:
-                    return acc["nameFb"]
-                elif "note" in acc and acc["note"]:
-                    return acc["note"]
-                else:
-                    return "Unknown"
-            return "Unknown"
+        acc = get_current_account()
+        if acc:
+            # Ưu tiên nameFb, nếu không có thì dùng note
+            if "nameFb" in acc and acc["nameFb"]:
+                return acc["nameFb"]
+            elif "note" in acc and acc["note"]:
+                return acc["note"]
+        return "Unknown"
     except Exception as e:
         log_message(f"Không thể đọc tên từ user_accounts.json: {e}", logging.WARNING)
         return "Unknown"
+
+# Hàm lấy roleWebSocket từ tài khoản hiện tại
+def get_websocket_role():
+    """Lấy roleWebSocket từ tài khoản hiện tại trong user_accounts.json"""
+    try:
+        acc = get_current_account()
+        if acc and "roleWebSocket" in acc and acc["roleWebSocket"]:
+            return acc["roleWebSocket"]
+        return "B"  # Mặc định
+    except Exception as e:
+        log_message(f"Không thể đọc roleWebSocket từ user_accounts.json: {e}", logging.WARNING)
+        return "B"
+
+# Hàm lấy trường "to" từ tài khoản hiện tại
+def get_id_tosend_websocket():
+    """Lấy trường 'to' từ tài khoản hiện tại trong user_accounts.json"""
+    try:
+        acc = get_current_account()
+        if acc and "to" in acc and acc["to"]:
+            return acc["to"]
+        return ""  # Mặc định
+    except Exception as e:
+        log_message(f"Không thể đọc trường 'to' từ user_accounts.json: {e}", logging.WARNING)
+        return ""
+
+# Hàm lấy thông tin đăng nhập từ tài khoản hiện tại
+def get_login_credentials():
+    """Lấy thông tin đăng nhập từ tài khoản hiện tại trong user_accounts.json"""
+    try:
+        acc = get_current_account()
+        if acc:
+            return {
+                "username": acc.get("facebook_username", ""),
+                "password": acc.get("facebook_password", ""),
+                "code_2fa": acc.get("facebook_2fa_code", ""),
+                "note": acc.get("note", ""),
+                "user_id_QLC": acc.get("user_id_QLC", ""),
+                "user_id_chat": acc.get("user_id_chat", "")
+            }
+        return None
+    except Exception as e:
+        log_message(f"Không thể đọc thông tin đăng nhập từ user_accounts.json: {e}", logging.ERROR)
+        return None
 
 # Hàm quản lý cấu trúc bài viết
 def load_post_structure():
@@ -258,30 +304,18 @@ async def connect_websocket():
     global stop_browsing, current_client_id
     
     try:
-        # Đọc role từ user_accounts.json
-        role_websocket = "A"  # Mặc định
-        try:
-            with open("user_accounts.json", "r", encoding="utf-8") as f:
-                accounts = json.load(f)
-                if isinstance(accounts, list) and len(accounts) > 0:
-                    # Lấy roleWebSocket của tài khoản đầu tiên (hoặc có thể chọn theo logic khác)
-                    acc = accounts[0]
-                    if "roleWebSocket" in acc and acc["roleWebSocket"]:
-                        role_websocket = acc["roleWebSocket"]
-        except Exception as e:
-            log_message(f"Không thể đọc roleWebSocket từ user_accounts.json, dùng mặc định 'B': {e}", logging.WARNING)
+        # Đọc role từ tài khoản hiện tại
+        current_client_id = get_websocket_role()
+        log_message(f"🔧 Sử dụng roleWebSocket: {current_client_id}", logging.INFO)
 
         async with websockets.connect(WEBSOCKET_URL) as websocket:
             log_message("Đã kết nối thành công tới WebSocket server!", logging.INFO)
-            import time
-            current_client_id = f"client{role_websocket}_{int(time.time() * 1000)}"
             register_message = {
                 "type": "register",
-                "role": role_websocket,
-                "clientId": current_client_id
+                "clientId": current_client_id,
             }
             await websocket.send(json.dumps(register_message))
-            log_message(f"Đã gửi tin nhắn đăng ký với role '{role_websocket}' và clientId: {current_client_id}", logging.INFO)
+            log_message(f"Đã gửi tin nhắn đăng ký với clientId: {current_client_id}", logging.INFO)
             
             # Lắng nghe tin nhắn từ server
             async for message in websocket:
@@ -830,22 +864,25 @@ async def comment_on_post_url(browser):
                         comment_result["postId"] = post_id_from_websocket
                         log_message(f"✅ Đã thêm postId vào kết quả: {post_id_from_websocket}", logging.INFO)
                     
+                    # Thêm thông tin user_id từ tài khoản hiện tại
+                    user_ids = get_id_tosend_websocket()
+                    comment_result["to"] = user_ids
+                    
                     # Gửi kết quả qua WebSocket
                     async def send_comment_result():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # Sử dụng lại clientId đã đăng ký
-                                global current_client_id
-                                if current_client_id:
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B", 
-                                        "clientId": current_client_id
-                                    }
+                                # # Sử dụng lại clientId đã đăng ký
+                                # global current_client_id
+                                # if current_client_id:
+                                #     register_message = {
+                                #         "type": "register",
+                                #         "clientId": current_client_id
+                                #     }
                                     
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                    await asyncio.sleep(0.5)
+                                #     await websocket.send(json.dumps(register_message))
+                                #     log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
+                                #     await asyncio.sleep(0.5)
                                 
                                 # Gửi kết quả bình luận
                                 await websocket.send(json.dumps(comment_result))
@@ -888,20 +925,23 @@ async def comment_on_post_url(browser):
                 if 'post_id_from_websocket' in locals() and post_id_from_websocket:
                     error_result["postId"] = post_id_from_websocket
                 
+                # Thêm thông tin user_id từ tài khoản hiện tại
+                user_ids = get_id_tosend_websocket()
+                error_result["to"] = user_ids
+                
                 async def send_error_result():
                     try:
                         async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            global current_client_id
-                            if current_client_id:
-                                register_message = {
-                                    "type": "register",
-                                    "role": "B", 
-                                    "clientId": current_client_id
-                                }
-                                await websocket.send(json.dumps(register_message))
-                                await asyncio.sleep(0.5)
+                            # global current_client_id
+                            # if current_client_id:
+                            #     register_message = {
+                            #         "type": "register",
+                            #         "clientId": current_client_id
+                            #     }
+                            #     await websocket.send(json.dumps(register_message))
+                            #     await asyncio.sleep(0.5)
                             
-                            await websocket.send(json.dumps(error_result))
+                            # await websocket.send(json.dumps(error_result))
                             log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
                     except:
                         pass
@@ -1253,15 +1293,11 @@ async def reply_to_comment(browser):
                         "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
                     }
-                    
-                    # Thêm reply_url và reply_id nếu lấy được
-                    if reply_url:
-                        reply_comment_result["reply_url"] = reply_url
-                        log_message(f"📤 Thêm reply_url vào kết quả: {reply_url}", logging.INFO)
+
                     
                     if reply_id:
-                        reply_comment_result["reply_id"] = reply_id
-                        log_message(f"📤 Thêm reply_id vào kết quả: {reply_id}", logging.INFO)
+                        reply_comment_result["replyId"] = reply_id
+                        log_message(f"📤 Thêm replyId vào kết quả: {reply_id}", logging.INFO)
                     
                     # Thêm commentId nếu có từ WebSocket
                     if comment_id_from_websocket:
@@ -1273,21 +1309,24 @@ async def reply_to_comment(browser):
                         reply_comment_result["postId"] = post_id_from_websocket
                         log_message(f"✅ Đã thêm postId vào kết quả: {post_id_from_websocket}", logging.INFO)
                     
+                    # Thêm thông tin user_id từ tài khoản hiện tại
+                    user_ids = get_id_tosend_websocket()
+                    reply_comment_result["to"] = user_ids
+                    
                     # Gửi kết quả qua WebSocket
                     async def send_reply_result():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # Sử dụng lại clientId đã đăng ký
-                                if current_client_id:
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B", 
-                                        "clientId": current_client_id
-                                    }
+                                # # Sử dụng lại clientId đã đăng ký
+                                # if current_client_id:
+                                #     register_message = {
+                                #         "type": "register",
+                                #         "clientId": current_client_id
+                                #     }
                                     
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                    await asyncio.sleep(0.5)
+                                #     await websocket.send(json.dumps(register_message))
+                                #     log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
+                                #     await asyncio.sleep(0.5)
                                 
                                 # Gửi kết quả trả lời
                                 await websocket.send(json.dumps(reply_comment_result))
@@ -1333,19 +1372,22 @@ async def reply_to_comment(browser):
                 if 'post_id_from_websocket' in locals() and post_id_from_websocket:
                     error_result["postId"] = post_id_from_websocket
                 
+                # Thêm thông tin user_id từ tài khoản hiện tại
+                user_ids = get_id_tosend_websocket()
+                error_result["to"] = user_ids
+                
                 async def send_error_result():
                     try:
                         async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            if current_client_id:
-                                register_message = {
-                                    "type": "register",
-                                    "role": "B", 
-                                    "clientId": current_client_id
-                                }
-                                await websocket.send(json.dumps(register_message))
-                                await asyncio.sleep(0.5)
+                            # if current_client_id:
+                            #     register_message = {
+                            #         "type": "register",
+                            #         "clientId": current_client_id
+                            #     }
+                            #     await websocket.send(json.dumps(register_message))
+                            #     await asyncio.sleep(0.5)
                             
-                            await websocket.send(json.dumps(error_result))
+                            # await websocket.send(json.dumps(error_result))
                             log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
                     except:
                         pass
@@ -1697,16 +1739,13 @@ async def reply_to_reply_comment(browser):
                     reply_to_reply_result = {
                         "type": "reply_reply_comment_result",
                         "status": "success",
-                        "URL": comment_url,
+                        "URL": reply_to_reply_url,
                         "reply_content": reply_content,
                         "authorName": get_facebook_name(),
                         "timestamp": datetime.now().isoformat()
                     }
                     
-                    # Thêm reply_to_reply_url và reply_to_reply_id nếu lấy được
-                    if reply_to_reply_url:
-                        reply_to_reply_result["reply_to_reply_url"] = reply_to_reply_url
-                        log_message(f"📤 Thêm reply_to_reply_url vào kết quả: {reply_to_reply_url}", logging.INFO)
+                    # Thêm và reply_to_reply_id nếu lấy được
                     
                     if reply_to_reply_id:
                         reply_to_reply_result["reply_to_reply_id"] = reply_to_reply_id
@@ -1725,23 +1764,26 @@ async def reply_to_reply_comment(browser):
                         reply_to_reply_result["postId"] = post_id_from_websocket
                         log_message(f"✅ Đã thêm postId vào kết quả: {post_id_from_websocket}", logging.INFO)
                     
+                    # Thêm thông tin user_id từ tài khoản hiện tại
+                    user_ids = get_id_tosend_websocket()
+                    reply_to_reply_result["to"] = user_ids
+                    
                     # Gửi kết quả qua WebSocket
                     async def send_reply_to_reply_result():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # Sử dụng lại clientId đã đăng ký
-                                if current_client_id:
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B", 
-                                        "clientId": current_client_id
-                                    }
+                                # # Sử dụng lại clientId đã đăng ký
+                                # if current_client_id:
+                                #     register_message = {
+                                #         "type": "register",
+                                #         "clientId": current_client_id
+                                #     }
                                     
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                    await asyncio.sleep(0.5)
+                                #     await websocket.send(json.dumps(register_message))
+                                #     log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
+                                #     await asyncio.sleep(0.5)
                                 
-                                # Gửi kết quả trả lời reply
+                                # # Gửi kết quả trả lời reply
                                 await websocket.send(json.dumps(reply_to_reply_result))
                                 log_message("✅ Đã gửi kết quả trả lời reply về bên A!", logging.INFO)
                         except Exception as ws_error:
@@ -1788,19 +1830,22 @@ async def reply_to_reply_comment(browser):
                 if 'post_id_from_websocket' in locals() and post_id_from_websocket:
                     error_result["postId"] = post_id_from_websocket
                 
+                # Thêm thông tin user_id từ tài khoản hiện tại
+                user_ids = get_id_tosend_websocket()
+                error_result["to"] = user_ids
+                
                 async def send_error_result():
                     try:
                         async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            if current_client_id:
-                                register_message = {
-                                    "type": "register",
-                                    "role": "B", 
-                                    "clientId": current_client_id
-                                }
-                                await websocket.send(json.dumps(register_message))
-                                await asyncio.sleep(0.5)
+                            # if current_client_id:
+                            #     register_message = {
+                            #         "type": "register",
+                            #         "clientId": current_client_id
+                            #     }
+                            #     await websocket.send(json.dumps(register_message))
+                            #     await asyncio.sleep(0.5)
                             
-                            await websocket.send(json.dumps(error_result))
+                            # await websocket.send(json.dumps(error_result))
                             log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
                     except:
                         pass
@@ -2341,38 +2386,40 @@ async def post_news_feed(browser):
                         url_data["postId"] = post_id_from_websocket
                         log_message(f"✅ Đã thêm postId vào dữ liệu gửi: {post_id_from_websocket}", logging.INFO)
                     
+                    # Thêm thông tin user_id từ tài khoản hiện tại
+                    user_ids = get_id_tosend_websocket()
+                    url_data["to"] = user_ids
+                    
                     log_message(f"📤 Chuẩn bị gửi dữ liệu URL qua WebSocket: {url_data}", logging.INFO)
                     
                     # Gửi dữ liệu qua WebSocket
                     async def send_url_to_websocket():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # Sử dụng lại clientId đã đăng ký từ connect_websocket()
-                                global current_client_id
-                                if current_client_id:
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B", 
-                                        "clientId": current_client_id
-                                    }
+                                # # Sử dụng lại clientId đã đăng ký từ connect_websocket()
+                                # global current_client_id
+                                # if current_client_id:
+                                #     register_message = {
+                                #         "type": "register",
+                                #         "clientId": current_client_id
+                                #     }
                                     
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Sử dụng lại clientId đã đăng ký: {current_client_id}", logging.INFO)
-                                else:
-                                    # Fallback nếu chưa có clientId
-                                    import time
-                                    current_client_id = f"clientB_{int(time.time() * 1000)}"
-                                    register_message = {
-                                        "type": "register",
-                                        "role": "B",
-                                        "clientId": current_client_id
-                                    }
+                                #     await websocket.send(json.dumps(register_message))
+                                #     log_message(f"📝 Sử dụng lại clientId đã đăng ký: {current_client_id}", logging.INFO)
+                                # else:
+                                #     # Fallback nếu chưa có clientId
+                                #     import time
+                                #     current_client_id = f"clientB_{int(time.time() * 1000)}"
+                                #     register_message = {
+                                #         "type": "register",
+                                #         "clientId": current_client_id
+                                #     }
                                     
-                                    await websocket.send(json.dumps(register_message))
-                                    log_message(f"📝 Tạo clientId mới: {current_client_id}", logging.INFO)
+                                #     await websocket.send(json.dumps(register_message))
+                                #     log_message(f"📝 Tạo clientId mới: {current_client_id}", logging.INFO)
                                 
-                                # Đợi phản hồi đăng ký thành công (tùy chọn)
-                                await asyncio.sleep(0.5)
+                                # # Đợi phản hồi đăng ký thành công (tùy chọn)
+                                # await asyncio.sleep(0.5)
                                 
                                 # Gửi dữ liệu URL
                                 await websocket.send(json.dumps(url_data))
@@ -2832,6 +2879,7 @@ async def main(client_user_id_chat):
         initialize()
         #Lấy data từ file user_accounts.json
         account_data = None
+        global current_account_data  # Khai báo sử dụng biến global
         try:
             with open("user_accounts.json", "r", encoding="utf-8") as file:
                 accounts = json.load(file)
@@ -2841,6 +2889,7 @@ async def main(client_user_id_chat):
                     log_message(f"Kiểm tra tài khoản: user_id_chat={acc_user_id}, note={acc.get('note', 'N/A')}", logging.DEBUG)
                     if acc_user_id == client_user_id_chat:
                         account_data = acc
+                        current_account_data = acc  # Gán vào biến global
                         break
         except FileNotFoundError:
             log_message("File user_accounts.json không tồn tại, chương trình sẽ dừng lại.", logging.ERROR)

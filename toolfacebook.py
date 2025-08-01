@@ -36,7 +36,7 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 
 # Constants
 COOKIE_FILE = "fb_cookies.json"
-WEBSOCKET_URL = "ws://localhost:3001"
+WEBSOCKET_URL = "ws://localhost:4000"
 POST_STRUCTURE_FILE = "post_structure.json"
 
 # Queue để lưu nội dung từ WebSocket
@@ -331,7 +331,7 @@ async def connect_websocket():
                         if attachments:
                             log_message(f"Phát hiện {len(attachments)} attachments", logging.INFO)
                             for attachment in attachments:
-                                if attachment.get("type", "").startswith("image/"):
+                                if attachment.get("type", "").startswith("image"):
                                     image_url = attachment.get("url")
                                     image_name = attachment.get("name", f"image_{int(time.time())}.jpg")
                                     
@@ -399,6 +399,7 @@ async def download_image(url, filename):
         log_message(f"Thư mục lưu ảnh: {DOWNLOAD_FOLDER}", logging.INFO)
         
         # Đường dẫn đầy đủ của file
+        filename = filename + '.png'
         file_path = os.path.join(DOWNLOAD_FOLDER, filename)
         log_message(f"Đường dẫn file sẽ lưu: {file_path}", logging.INFO)
         
@@ -672,24 +673,107 @@ async def comment_on_post_url(browser):
         log_message("⏳ Đợi trang load hoàn toàn...", logging.INFO)
         await asyncio.sleep(3)
         
-        # Tìm nút bình luận
+        # Tìm nút bình luận (tránh click vào ảnh)
         comment_button = None
         try:
-            # Thử tìm nút bình luận bằng nhiều cách
-            comment_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Viết bình luận" or @aria-label="Leave a comment" or @aria-label="Write a comment") and @role="button"]')
+            log_message("🔍 Bắt đầu tìm nút bình luận...", logging.INFO)
             
-            for btn in comment_buttons:
-                if btn.is_displayed() and btn.is_enabled():
-                    comment_button = btn
-                    break
-                    
-            if not comment_button:
-                # Thử cách khác - tìm theo text
-                comment_buttons = browser.find_elements(By.XPATH, '//div[@role="button" and (contains(text(), "Bình luận") or contains(text(), "Comment"))]')
-                for btn in comment_buttons:
+            # Cuộn xuống một chút để tìm nút bình luận thật sự
+            browser.execute_script("window.scrollBy(0, 300);")
+            await asyncio.sleep(1)
+            
+            # Tìm tất cả nút bình luận
+            comment_buttons = browser.find_elements(By.XPATH, '//div[(@aria-label="Viết bình luận" or @aria-label="Leave a comment" or @aria-label="Write a comment") and @role="button"]')
+            log_message(f"🔍 Tìm thấy {len(comment_buttons)} nút có aria-label bình luận", logging.INFO)
+            
+            # Nếu có ít nhất 2 nút, chọn nút thứ 2 luôn
+            if len(comment_buttons) >= 2:
+                log_message("🎯 Có ít nhất 2 nút, chọn nút thứ 2 luôn", logging.INFO)
+                comment_button = comment_buttons[1]  # Chọn nút thứ 2 (index 1)
+                log_message("✅ Đã chọn nút bình luận thứ 2", logging.INFO)
+            else:
+                # Nếu chỉ có 1 nút hoặc không có nút nào, giữ logic cũ
+                for i, btn in enumerate(comment_buttons):
                     if btn.is_displayed() and btn.is_enabled():
-                        comment_button = btn
-                        break
+                        log_message(f"🔍 Kiểm tra nút {i+1}/{len(comment_buttons)}", logging.INFO)
+                        
+                        # Cuộn nút vào view để kiểm tra
+                        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                        await asyncio.sleep(0.5)
+                        
+                        # Kiểm tra không phải nút ảnh
+                        is_valid = True
+                        try:
+                            # Kiểm tra nút có chứa ảnh không
+                            img_elements = btn.find_elements(By.TAG_NAME, "img")
+                            if img_elements:
+                                log_message(f"⚠️ Nút {i+1} có chứa {len(img_elements)} ảnh - bỏ qua", logging.INFO)
+                                is_valid = False
+                                continue
+                                
+                            # Kiểm tra class name
+                            btn_class = btn.get_attribute("class") or ""
+                            if any(img_class in btn_class.lower() for img_class in ["image", "photo", "picture", "media", "attachment"]):
+                                log_message(f"⚠️ Nút {i+1} có class liên quan đến ảnh - bỏ qua", logging.INFO)
+                                is_valid = False
+                                continue
+                                
+                            # Kiểm tra text content của nút
+                            btn_text = btn.get_attribute("textContent") or ""
+                            if "bình luận" in btn_text.lower() or "comment" in btn_text.lower():
+                                log_message(f"✅ Nút {i+1} có text bình luận hợp lệ", logging.INFO)
+                                comment_button = btn
+                                break
+                                
+                            # Nếu không có text, kiểm tra aria-label chi tiết hơn
+                            aria_label = btn.get_attribute("aria-label") or ""
+                            if ("viết bình luận" in aria_label.lower() or 
+                                "leave a comment" in aria_label.lower() or 
+                                "write a comment" in aria_label.lower()):
+                                # Kiểm tra xem có phải nút trong vùng bài viết chính không
+                                parent_elements = btn.find_elements(By.XPATH, "./ancestor::*[contains(@class, 'post') or contains(@class, 'story') or contains(@data-pagelet, 'FeedUnit')]")
+                                if parent_elements:
+                                    log_message(f"✅ Nút {i+1} nằm trong container bài viết - lưu làm ứng cử viên", logging.INFO)
+                                    comment_button = btn  # Lưu nút này, có thể sẽ bị ghi đè bởi nút sau
+                                    # Không break ở đây, tiếp tục tìm để lấy nút cuối cùng
+                                
+                        except Exception as check_error:
+                            log_message(f"⚠️ Lỗi khi kiểm tra nút {i+1}: {check_error}", logging.WARNING)
+                            continue
+                
+                # Nếu tìm thấy comment_button qua vòng lặp trên, đó sẽ là nút cuối cùng
+                if comment_button:
+                    log_message("✅ Đã chọn nút bình luận cuối cùng hợp lệ", logging.INFO)
+                    
+            # Nếu vẫn chưa tìm thấy, thử tìm theo text
+            if not comment_button:
+                log_message("🔍 Không tìm thấy nút bằng aria-label, thử tìm theo text...", logging.INFO)
+                comment_buttons = browser.find_elements(By.XPATH, '//div[@role="button" and (contains(text(), "Bình luận") or contains(text(), "Comment"))]')
+                
+                # Nếu có ít nhất 2 nút, chọn nút thứ 2 luôn
+                if len(comment_buttons) >= 2:
+                    log_message("🎯 Có ít nhất 2 nút text, chọn nút thứ 2 luôn", logging.INFO)
+                    comment_button = comment_buttons[1]  # Chọn nút thứ 2 (index 1)
+                    log_message("✅ Đã chọn nút bình luận text thứ 2", logging.INFO)
+                else:
+                    # Nếu chỉ có 1 nút hoặc không có nút nào, giữ logic cũ
+                    for i, btn in enumerate(comment_buttons):
+                        if btn.is_displayed() and btn.is_enabled():
+                            # Cuộn vào view
+                            browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                            await asyncio.sleep(0.5)
+                            
+                            # Kiểm tra không có ảnh
+                            img_elements = btn.find_elements(By.TAG_NAME, "img")
+                            if not img_elements:
+                                log_message(f"✅ Nút text {i+1} không có ảnh - lưu làm ứng cử viên", logging.INFO)
+                                comment_button = btn  # Lưu nút này, tiếp tục tìm để lấy nút cuối cùng
+                            else:
+                                log_message(f"⚠️ Nút text {i+1} có {len(img_elements)} ảnh - bỏ qua", logging.INFO)
+                    
+                    if comment_button:
+                        log_message("✅ Đã chọn nút bình luận cuối cùng theo text", logging.INFO)
+                            
         except Exception as e:
             log_message(f"Lỗi khi tìm nút bình luận: {e}", logging.WARNING)
         

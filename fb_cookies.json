@@ -1,72 +1,13 @@
 [
     {
         "domain": ".facebook.com",
-        "expiry": 1785563093,
+        "expiry": 1787708157,
         "httpOnly": true,
-        "name": "xs",
-        "path": "/",
-        "sameSite": "None",
-        "secure": true,
-        "value": "33%3Atl1V_-XYxPGXlw%3A2%3A1754023486%3A-1%3A-1%3A%3AAcXO34PX6zt88KSucFaMEpvotaT9j0n3xzCmftCDLg"
-    },
-    {
-        "domain": ".facebook.com",
-        "httpOnly": false,
-        "name": "presence",
+        "name": "ps_l",
         "path": "/",
         "sameSite": "Lax",
         "secure": true,
-        "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1754027094881%2C%22v%22%3A1%7D"
-    },
-    {
-        "domain": ".facebook.com",
-        "expiry": 1761803093,
-        "httpOnly": true,
-        "name": "fr",
-        "path": "/",
-        "sameSite": "None",
-        "secure": true,
-        "value": "14yj8dlvCRRrkZCPQ.AWc_wEAFN4O3ltG--vTJcS02q_5ThuZPZGlvUrpCXHcX_8GIB74.BojFRV..AAA.0.0.BojFRV.AWfqEmjR4Nl2jhbtSiYssSXqtw8"
-    },
-    {
-        "domain": ".facebook.com",
-        "expiry": 1788587093,
-        "httpOnly": true,
-        "name": "datr",
-        "path": "/",
-        "sameSite": "None",
-        "secure": true,
-        "value": "SUKMaC_bWBKke8EbKH9g7wR9"
-    },
-    {
-        "domain": ".facebook.com",
-        "expiry": 1754631894,
-        "httpOnly": false,
-        "name": "dpr",
-        "path": "/",
-        "sameSite": "None",
-        "secure": true,
-        "value": "1.5625001192092896"
-    },
-    {
-        "domain": ".facebook.com",
-        "expiry": 1785563093,
-        "httpOnly": false,
-        "name": "c_user",
-        "path": "/",
-        "sameSite": "None",
-        "secure": true,
-        "value": "100087230611083"
-    },
-    {
-        "domain": ".facebook.com",
-        "expiry": 1754631894,
-        "httpOnly": false,
-        "name": "wd",
-        "path": "/",
-        "sameSite": "Lax",
-        "secure": true,
-        "value": "818x795"
+        "value": "1"
     },
     {
         "domain": ".facebook.com",
@@ -90,12 +31,71 @@
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1787708157,
+        "expiry": 1788663783,
         "httpOnly": true,
-        "name": "ps_l",
+        "name": "datr",
+        "path": "/",
+        "sameSite": "None",
+        "secure": true,
+        "value": "SUKMaC_bWBKke8EbKH9g7wR9"
+    },
+    {
+        "domain": ".facebook.com",
+        "httpOnly": false,
+        "name": "presence",
         "path": "/",
         "sameSite": "Lax",
         "secure": true,
-        "value": "1"
+        "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1754106110051%2C%22v%22%3A1%7D"
+    },
+    {
+        "domain": ".facebook.com",
+        "expiry": 1761879783,
+        "httpOnly": true,
+        "name": "fr",
+        "path": "/",
+        "sameSite": "None",
+        "secure": true,
+        "value": "1JEyC58jiABYOlOfP.AWcWbMMDsuWSEOwm7oe9lXpmIhnvhaQkteGqocn1lp8xas9fIGE.BojX_n..AAA.0.0.BojX_n.AWchGyrtQFv_iYWy95IFTakGh5o"
+    },
+    {
+        "domain": ".facebook.com",
+        "expiry": 1754710909,
+        "httpOnly": false,
+        "name": "dpr",
+        "path": "/",
+        "sameSite": "None",
+        "secure": true,
+        "value": "1.5625001192092896"
+    },
+    {
+        "domain": ".facebook.com",
+        "expiry": 1785639783,
+        "httpOnly": true,
+        "name": "xs",
+        "path": "/",
+        "sameSite": "None",
+        "secure": true,
+        "value": "33%3Atl1V_-XYxPGXlw%3A2%3A1754023486%3A-1%3A-1%3A%3AAcWzG8-GVNKwVYaRDJcu4C89hXVMAYavU0MmHrCWtQ"
+    },
+    {
+        "domain": ".facebook.com",
+        "expiry": 1785639783,
+        "httpOnly": false,
+        "name": "c_user",
+        "path": "/",
+        "sameSite": "None",
+        "secure": true,
+        "value": "100087230611083"
+    },
+    {
+        "domain": ".facebook.com",
+        "expiry": 1754710909,
+        "httpOnly": false,
+        "name": "wd",
+        "path": "/",
+        "sameSite": "Lax",
+        "secure": true,
+        "value": "818x795"
     }
 ]

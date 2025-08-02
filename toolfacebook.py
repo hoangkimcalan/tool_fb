@@ -19,6 +19,9 @@ import asyncio
 import websockets
 from datetime import datetime
 import pyperclip
+import csv
+import pandas as pd
+from datetime import timedelta
 
 
 from selenium import webdriver
@@ -460,7 +463,12 @@ async def load_cookies(browser):
             valid_cookies = [cookie for cookie in cookies if 'expiry' not in cookie or cookie['expiry'] > time.time()]
             
             if valid_cookies:
+                allowed_samesite = ["Strict", "Lax", "None"]
                 for cookie in valid_cookies:
+                    # Sửa hoặc xóa trường sameSite nếu không hợp lệ
+                    if "sameSite" in cookie and cookie["sameSite"] not in allowed_samesite:
+                        log_message(f"⚠️ Cookie sameSite không hợp lệ: {cookie['sameSite']}, sẽ xóa trường này", logging.INFO)
+                        del cookie["sameSite"]
                     browser.add_cookie(cookie)
 
                 # Nếu có cookie hết hạn, cập nhật lại file JSON
@@ -2953,6 +2961,925 @@ async def is_logged_in(browser):
 async def read_notification(browser):
     """Đọc thông báo mới trên Facebook"""
 
+def parse_relative_time(date_text, extracted_at):
+    """Chuyển các chuỗi dạng '5 giờ', '2 phút', '1 ngày' thành datetime trừ từ extracted_at"""
+    now = datetime.fromisoformat(extracted_at)
+
+    patterns = [
+        (r'(\d+)\s*giây', 'seconds'),
+        (r'(\d+)\s*phút', 'minutes'),
+        (r'(\d+)\s*giờ', 'hours'),
+        (r'(\d+)\s*ngày', 'days'),
+    ]
+
+    for pattern, unit in patterns:
+        match = re.search(pattern, date_text.lower())
+        if match:
+            value = int(match.group(1))
+            delta = timedelta(**{unit: value})
+            comment_time = now - delta
+            return comment_time.strftime("%Y-%m-%d")
+
+    # nếu không khớp gì thì trả về ngày hiện tại
+    return now.strftime("%Y-%m-%d")
+
+class FacebookCommentScraper:
+    def __init__(self, driver=None):
+        """Khởi tạo scraper với trình duyệt đã có sẵn"""
+        self.driver = driver
+        
+    def select_all_comments_mode(self):
+        """Chọn chế độ 'Tất cả bình luận' thay vì 'Phù hợp nhất'"""
+        try:
+            sort_selectors = [
+                # Tiếng Việt
+                "//span[contains(text(), 'Phù hợp nhất')]",
+                "//div[contains(text(), 'Phù hợp nhất')]",
+                # Tiếng Anh 
+                "//span[contains(text(), 'Most relevant')]",
+                "//div[contains(text(), 'Most relevant')]"
+            ]
+            
+            # Tìm và click vào nút dropdown
+            dropdown_clicked = False
+            for selector in sort_selectors:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, selector)
+                    for element in elements:
+                        try:
+                            text = element.text.strip().lower()
+                            if "phù hợp nhất" in text or "most relevant" in text:
+                                if element.is_displayed() and element.is_enabled():
+                                    log_message(f"Đã tìm thấy nút: {element.text}", logging.INFO)
+                                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                                    time.sleep(1)
+                                    self.driver.execute_script("arguments[0].click();", element)
+                                    time.sleep(2)
+                                    dropdown_clicked = True
+                                    break
+                        except Exception:
+                            continue
+                    if dropdown_clicked:
+                        break
+                except Exception:
+                    continue
+            
+            if not dropdown_clicked:
+                log_message("Không tìm thấy nút dropdown sắp xếp bình luận", logging.INFO)
+                return True
+            
+            # Tìm và click "Tất cả bình luận"
+            time.sleep(2)
+            all_comments_selectors = [
+                "//span[contains(text(), 'Tất cả bình luận')]",
+                "//div[contains(text(), 'Tất cả bình luận')]",
+                "//span[contains(text(), 'All comments')]",
+                "//div[contains(text(), 'All comments')]"
+            ]
+            
+            for selector in all_comments_selectors:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, selector)
+                    for element in elements:
+                        try:
+                            if element.is_displayed() and element.is_enabled():
+                                self.driver.execute_script("arguments[0].click();", element)
+                                log_message("Đã chọn 'Tất cả bình luận'", logging.INFO)
+                                time.sleep(3)
+                                return True
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            
+            log_message("Không tìm thấy tùy chọn 'Tất cả bình luận'", logging.WARNING)
+            return False
+            
+        except Exception as e:
+            log_message(f"Lỗi khi chọn chế độ 'Tất cả bình luận': {e}", logging.ERROR)
+            return False
+
+    def load_all_comments(self, max_scrolls=50):
+        """Cuộn trang và tải thêm bình luận"""
+        scrolls = 0
+        no_new_content_count = 0
+        max_no_new_content = 3  # Tăng từ 3 lên 5 như trong comment_crawler_TCN
+
+        try:
+            body = self.driver.find_element(By.TAG_NAME, 'body')
+        except:
+            log_message("Không tìm thấy thẻ body", logging.ERROR)
+            return
+
+        while scrolls < max_scrolls and no_new_content_count < max_no_new_content:
+            log_message(f"Lượt cuộn {scrolls + 1}/{max_scrolls}", logging.INFO)
+            
+            current_comments_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div[role='article']"))
+            buttons_clicked = self.click_all_expand_buttons()
+
+            for _ in range(5): 
+                body.send_keys(Keys.PAGE_DOWN)
+                time.sleep(0.3) 
+            time.sleep(3)
+
+            new_comments_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div[role='article']"))
+            
+            if new_comments_count == current_comments_count and buttons_clicked == 0:
+                no_new_content_count += 1
+                log_message(f"Không có nội dung mới - lần {no_new_content_count}/{max_no_new_content}", logging.INFO)
+            else:
+                no_new_content_count = 0 
+                if new_comments_count > current_comments_count:
+                    log_message(f"Đã tải thêm {new_comments_count - current_comments_count} comment/reply", logging.INFO)
+            
+            scrolls += 1
+            
+        # Cuộn lại từ đầu đến cuối một lần nữa để đảm bảo load hết (như trong comment_crawler_TCN)
+        self.driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(2)
+        
+        for i in range(5):
+            self.click_all_expand_buttons()
+            body.send_keys(Keys.PAGE_DOWN)
+            time.sleep(2)
+
+    def click_all_expand_buttons(self):
+        """Click tất cả các nút mở rộng"""
+        buttons_clicked = 0
+        
+        view_more_patterns = [
+            "//span[contains(text(), 'Xem các bình luận trước')]", 
+            "//span[contains(text(), 'bình luận khác')]",
+            "//span[contains(text(), 'View more comments')]",
+            "//span[contains(text(), 'See previous comments')]",
+        ]
+        
+        reply_patterns = [
+            "//span[contains(text(), 'Xem phản hồi')]",
+            "//span[contains(text(), 'phản hồi')]",
+            "//span[contains(text(), 'View replies')]",
+            "//span[contains(text(), 'replies')]",
+        ]
+        
+        all_patterns = view_more_patterns + reply_patterns
+        
+        for pattern in all_patterns:
+            try:
+                buttons = self.driver.find_elements(By.XPATH, pattern)
+                for button in buttons:
+                    try:
+                        if button.is_displayed() and button.is_enabled():
+                            button_text = button.text.strip().lower()
+                            valid_keywords = ['xem thêm', 'bình luận', 'phản hồi', 'view more', 'comment', 'replies', 'view replies']
+                            if any(keyword in button_text for keyword in valid_keywords):
+                                try:
+                                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                                    time.sleep(0.5)
+                                    self.driver.execute_script("arguments[0].click();", button)
+                                    buttons_clicked += 1
+                                    time.sleep(1)
+                                except Exception:
+                                    continue
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        
+        return buttons_clicked
+
+    def extract_comments(self, post_url):
+        """Trích xuất các bình luận từ một bài đăng"""
+        try:
+            log_message(f"🔍 Đang cào comment từ: {post_url}", logging.INFO)
+            self.driver.get(post_url)
+            time.sleep(8)
+            
+            return self._extract_comments_from_page()
+            
+        except Exception as e:
+            log_message(f"Lỗi khi trích xuất các bình luận: {e}", logging.ERROR)
+            return []
+
+    def extract_comments_from_current_page(self):
+        """Trích xuất các bình luận từ trang hiện tại (không chuyển URL)"""
+        try:
+            current_url = self.driver.current_url
+            log_message(f"🔍 Đang cào comment từ trang hiện tại: {current_url}", logging.INFO)
+            
+            return self._extract_comments_from_page()
+            
+        except Exception as e:
+            log_message(f"Lỗi khi trích xuất các bình luận từ trang hiện tại: {e}", logging.ERROR)
+            return []
+
+    def _extract_comments_from_page(self):
+        """Hàm chung để trích xuất comment từ trang hiện tại"""
+        try:
+            # Chọn chế độ "Tất cả bình luận"
+            self.select_all_comments_mode()
+            
+            # Tải tất cả các bình luận và phản hồi
+            self.load_all_comments()
+            
+            # Cuộn lại từ đầu đến cuối một lần nữa để đảm bảo load hết
+            log_message("🔄 Cuộn lại để đảm bảo load đầy đủ comment...", logging.INFO)
+            self.driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
+            
+            body = self.driver.find_element(By.TAG_NAME, 'body')
+            for i in range(5):
+                self.click_all_expand_buttons()
+                body.send_keys(Keys.PAGE_DOWN)
+                time.sleep(2)
+            
+            comments_data = []
+            
+            # Tìm tất cả comment elements
+            comment_elements = self.driver.find_elements(By.CSS_SELECTOR, "div[role='article']")
+            
+            # Filter để chỉ lấy những element thực sự là comment
+            valid_comments = []
+            for element in comment_elements:
+                try:
+                    text = element.text.strip()
+                    if (len(text) > 0 and 
+                        not text.startswith("Hình ảnh") and 
+                        not text.startswith("Video") and
+                        ("bình luận" in text.lower() or "phản hồi" in text.lower() or len(text.split('\n')) >= 1)):
+                        valid_comments.append(element)
+                except:
+                    continue
+            
+            log_message(f"🔍 Tìm thấy {len(valid_comments)} comment hợp lệ", logging.INFO)
+            
+            # Trích xuất dữ liệu từ mỗi comment
+            for i, comment in enumerate(valid_comments):
+                try:
+                    comment_data = self.extract_comment_data(comment, i, self.driver.current_url)
+                    if comment_data:
+                        comments_data.append(comment_data)
+                        if (i + 1) % 10 == 0:
+                            log_message(f"Đã xử lý {i + 1} comment", logging.INFO)
+                except Exception as e:
+                    log_message(f"Lỗi khi trích xuất comment {i}: {e}", logging.WARNING)
+                    continue
+
+            return comments_data
+            
+        except Exception as e:
+            log_message(f"Lỗi trong _extract_comments_from_page: {e}", logging.ERROR)
+            return []
+
+    def extract_comment_data(self, comment_element, index, post_url=None):
+        """Trích xuất dữ liệu của từng bình luận với improved text extraction"""
+        try:
+            comment_text = self.extract_comment_text(comment_element)
+            commenter_name, commenter_link = self.extract_commenter_info(comment_element)
+            comment_date = self.extract_comment_time(comment_element)
+            comment_id, reply_comment_id, link_comment = self.extract_comment_ids(comment_element)
+            now_iso = datetime.now().isoformat()
+            normalized_date = parse_relative_time(comment_date or "", now_iso)
+            
+            # Debug log để kiểm tra data
+            log_message(f"🔍 Debug comment {index}: ID={comment_id}, Reply_ID={reply_comment_id}, Text='{comment_text[:50]}...'", logging.INFO)
+            
+            if comment_text and len(comment_text.strip()) > 0:
+                return {
+                    'text': comment_text,
+                    'commentor': commenter_name or "Unknown",
+                    'date_comment': normalized_date or "Unknown",
+                    'link_commenter': commenter_link or "None",
+                    'comment_id': comment_id or "None",
+                    'reply_comment_id': reply_comment_id or "None", 
+                    'link_comment': link_comment or "None",
+                    'post_url': post_url or "",
+                    'extracted_at': now_iso
+                }
+            else:
+                log_message(f"❌ Comment {index} bị bỏ qua vì không có text. ID={comment_id}, Reply_ID={reply_comment_id}", logging.WARNING)
+        except Exception as e:
+            log_message(f"Lỗi khi trích xuất dữ liệu comment {index}: {e}", logging.ERROR)
+        return None
+
+    def is_reply_comment(self, comment_element):
+        """Kiểm tra xem element có phải là reply không"""
+        try:
+            # Kiểm tra class hoặc structure để xác định reply
+            # Reply thường có indentation hoặc class đặc biệt
+            parent_div = comment_element.find_element(By.XPATH, "./ancestor::div[1]")
+            parent_class = parent_div.get_attribute("class") or ""
+            
+            # Kiểm tra các dấu hiệu của reply
+            reply_indicators = [
+                "reply", "nested", "indent", "child",
+                "sub-comment", "response"
+            ]
+            
+            for indicator in reply_indicators:
+                if indicator in parent_class.lower():
+                    return True
+            
+            # Kiểm tra vị trí và cấu trúc
+            # Reply thường có margin-left hoặc padding-left lớn hơn
+            style = comment_element.get_attribute("style") or ""
+            if "margin-left" in style or "padding-left" in style:
+                return True
+                
+            return False
+            
+        except Exception:
+            return False
+    
+    def find_parent_comment_id(self, reply_element):
+        """Tìm ID của comment cha cho reply"""
+        try:
+            # Tìm comment cha bằng cách đi ngược lên DOM tree
+            parent_containers = reply_element.find_elements(
+                By.XPATH, 
+                "./ancestor::div[contains(@class, 'comment') or @role='article']"
+            )
+            
+            for container in reversed(parent_containers):
+                try:
+                    # Tìm link có comment_id trong container này
+                    links = container.find_elements(By.CSS_SELECTOR, "a")
+                    for link in links:
+                        href = link.get_attribute("href") or ""
+                        if "comment_id=" in href:
+                            comment_match = re.search(r'comment_id=(\d+)', href)
+                            if comment_match:
+                                return comment_match.group(1)
+                except Exception:
+                    continue
+                    
+            return None
+            
+        except Exception:
+            return None
+
+    def extract_comment_text(self, comment_element):
+        """
+        Extract comment text chính xác.
+        - Loại bỏ tên người được trả lời trong reply.
+        - Giữ lại các hashtag và các link khác trong nội dung comment.
+        """
+        try:
+            js_script = """
+            var element = arguments[0];
+            var clone = element.cloneNode(true);
+            var links = clone.querySelectorAll('a');
+            links.forEach(function(link) {
+                var href = link.getAttribute('href') || '';
+                if (href.includes('/user/') || href.includes('profile.php')) {
+                    link.parentNode.removeChild(link);
+                }
+            });
+            return (clone.textContent || clone.innerText).trim();
+            """
+
+            comment_texts = []
+            
+            text_containers = comment_element.find_elements(By.CSS_SELECTOR, "div[dir='auto']")
+            if text_containers:
+                for container in text_containers:
+                    try:
+                        cleaned_text = self.driver.execute_script(js_script, container)
+                        if cleaned_text and not self.is_metadata_text(cleaned_text):
+                            comment_texts.append(cleaned_text)
+                    except Exception:
+                        continue
+            
+            #  Nếu không tìm thấy text từ chiến lược 1
+            if not comment_texts:
+                try:
+                    # Tìm các link không phải là link trang cá nhân
+                    all_links = comment_element.find_elements(By.TAG_NAME, 'a')
+                    for link in all_links:
+                        href = link.get_attribute('href') or ''
+                        # Nếu link không phải là link profile, lấy text của nó
+                        if not ('/user/' in href or 'profile.php' in href):
+                            text = link.text.strip()
+                            if text and not self.is_metadata_text(text):
+                                comment_texts.append(text)
+                except Exception:
+                    pass
+
+            if comment_texts:
+                return '\n'.join(list(dict.fromkeys(comment_texts)))
+            
+            return ""
+            
+        except Exception as e:
+            print(f"Lỗi khi trích xuất comment text: {e}")
+            return ""
+            
+
+    def extract_comment_ids(self, comment_element):
+        """Trích xuất comment_id, reply_comment_id và link_comment"""
+        comment_id = "None"
+        reply_comment_id = "None" 
+        link_comment = ""
+        
+        try:
+            link_elements = comment_element.find_elements(By.CSS_SELECTOR, "a")
+            
+            for link in link_elements:
+                try:
+                    href = link.get_attribute("href") or ""
+                    if "comment_id=" in href:
+                        # Extract comment_id
+                        comment_match = re.search(r'comment_id=(\d+)', href)
+                        if comment_match:
+                            comment_id = comment_match.group(1)
+                            link_comment = href
+                            
+                            # Extract reply_comment_id nếu có
+                            reply_match = re.search(r'reply_comment_id=(\d+)', href)
+                            if reply_match:
+                                reply_comment_id = reply_match.group(1)
+                                log_message(f"🔍 Tìm thấy reply_comment_id: {reply_comment_id} cho comment_id: {comment_id}", logging.INFO)
+                            
+                            break
+                except:
+                    continue
+                    
+        except Exception as e:
+            log_message(f"Lỗi khi trích xuất comment IDs: {e}", logging.WARNING)
+        
+        return comment_id, reply_comment_id, link_comment
+
+    def extract_commenter_info(self, comment_element):
+        """Extract commenter name and link"""
+        commenter_name = ""
+        commenter_link = ""
+
+        try:
+            link_elements = comment_element.find_elements(By.CSS_SELECTOR, "a[role='link']")
+            
+            for link in link_elements:
+                try:
+                    href = link.get_attribute("href") or ""
+                    if "facebook.com" in href and ("profile.php" in href or "/user/" in href or href.count('/') >= 3):
+                        name = link.text.strip()
+                        if name and len(name) > 0 and not any(char.isdigit() for char in name):
+                            commenter_name = name
+                            commenter_link = href
+                            break
+                except:
+                    continue
+                            
+        except Exception as e:
+            log_message(f"Lỗi khi trích xuất thông tin commenter: {e}", logging.WARNING)
+        
+        return commenter_name, commenter_link
+
+    def extract_comment_time(self, comment_element):
+        """Extract comment timestamp"""
+        comment_date = ""
+        
+        try:
+            link_elements = comment_element.find_elements(By.CSS_SELECTOR, "a")
+            for link in link_elements:
+                try:
+                    text = link.text.strip()
+                    if self.is_time_text(text):
+                        comment_date = text
+                        break
+                except:
+                    continue
+        except:
+            pass
+        
+        return comment_date
+
+    def is_metadata_text(self, text):
+        """Kiểm tra xem text có phải là metadata (tên, thời gian, action) không"""
+        text_lower = text.lower()
+        metadata_keywords = [
+            'giờ', 'phút', 'ngày', 'tháng', 'năm',
+            'theo dõi', 'thích', 'trả lời', 'chia sẻ',
+            'like', 'reply', 'share', 'follow',
+            'ago', 'hour', 'minute', 'day', 'month', 'year',
+            'just now', 'bây giờ', 'vừa xong'
+        ]
+        
+        # Nếu text quá ngắn (có thể là tên) hoặc chứa metadata keywords
+        if len(text) <5 and any(keyword in text_lower for keyword in metadata_keywords):
+            return True
+            
+        return False
+
+    def is_time_text(self, text):
+        """Kiểm tra xem text có phải là thời gian không"""
+        if not text:
+            return False
+            
+        text_lower = text.lower()
+        time_keywords = [
+            'giờ', 'phút', 'ngày', 'tháng', 'năm',
+            'ago', 'hour', 'minute', 'day', 'month', 'year',
+            'h', 'm', 'd', ':', 'just now', 'bây giờ','giây'
+        ]
+        
+        return any(keyword in text_lower for keyword in time_keywords)
+    
+    def extract_post_id_from_url(self, url):
+        """Extract post ID from Facebook URL"""
+        try:
+            # Các pattern để extract post_id từ URL Facebook
+            patterns = [
+                r'/posts/(\d+)',
+                r'/permalink\.php.*story_fbid=(\d+)',
+                r'story_fbid=(\d+)',
+                r'/(\d+)/posts/(\d+)',
+                r'fbid=(\d+)',
+                r'post_id=(\d+)',
+                r'/(\d+)/?$'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    # Lấy group cuối cùng (thường là post_id)
+                    post_id = match.group(-1)
+                    if post_id and len(post_id) > 5:  # Post ID thường dài hơn 5 ký tự
+                        log_message(f"✅ Extract được post_id: {post_id} từ URL: {url}", logging.INFO)
+                        return post_id
+            
+            log_message(f"⚠️ Không extract được post_id từ URL: {url}", logging.WARNING)
+            return None
+            
+        except Exception as e:
+            log_message(f"❌ Lỗi khi extract post_id từ URL: {e}", logging.ERROR)
+            return None
+
+    def save_to_csv(self, comments_data, filename=None):
+        """Lưu dữ liệu bình luận vào file CSV"""
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"facebook_comments_{timestamp}.csv"
+        
+        if not comments_data:
+            log_message("Không có dữ liệu để lưu", logging.WARNING)
+            return None
+            
+        try:
+            df = pd.DataFrame(comments_data)
+            # Bỏ cột extracted_at nếu có (giống comment_crawler_TCN.py)
+            if 'extracted_at' in df.columns:
+                df = df.drop(columns=['extracted_at'])
+            
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            log_message(f"✅ Đã lưu {len(comments_data)} bình luận vào file {filename}", logging.INFO)
+            return filename
+        except Exception as e:
+            log_message(f"Lỗi khi lưu file CSV: {e}", logging.ERROR)
+            return None
+
+    def scrape_post_comments(self, post_url, cookies_file=None, output_file=None):
+        """Phương thức chính để crawl bình luận từ một bài đăng bằng cookie (giống comment_crawler_TCN.py)"""
+        try:
+            if cookies_file and not self.load_cookies(cookies_file):
+                log_message("Đăng nhập bằng cookie thất bại. Vui lòng kiểm tra lại file cookie.", logging.ERROR)
+                return None
+            
+            # Trích xuất bình luận
+            comments = self.extract_comments(post_url)
+            
+            if comments:
+                # Lưu vào file CSV
+                filename = self.save_to_csv(comments, output_file)
+                return filename
+            else:
+                log_message("Không trích xuất được bình luận nào.", logging.WARNING)
+                return None
+                
+        except Exception as e:
+            log_message(f"Quá trình crawl thất bại: {e}", logging.ERROR)
+            return None
+
+    def close(self):
+        """Đóng trình duyệt"""
+        if self.driver:
+            self.driver.quit()
+
+# Hàm cào comment và tự động thêm vào structure
+async def crawl_comments_and_update_structure(browser, post_url=None, target_post_id=None):
+    """Cào comment từ URL hiện tại hoặc URL cụ thể và tự động thêm vào structure"""
+    try:
+        # Chỉ chuyển trang nếu post_url khác với trang hiện tại
+        if post_url:
+            current_url = browser.current_url
+            if post_url != current_url:
+                log_message(f"🔍 Đang chuyển đến URL: {post_url}", logging.INFO)
+                browser.get(post_url)
+                await asyncio.sleep(3)
+            else:
+                log_message(f"🔍 Đã ở đúng trang: {post_url}", logging.INFO)
+        else:
+            post_url = browser.current_url
+            log_message(f"🔍 Đang cào comment từ URL hiện tại: {post_url}", logging.INFO)
+        
+        # Sử dụng post_id được cung cấp hoặc mặc định
+        post_id = target_post_id or "default_post"
+        log_message(f"🆔 Sử dụng Post ID: {post_id}", logging.INFO)
+        
+        # Thêm post vào structure nếu chưa có
+        add_post_to_structure(post_url, post_id)
+        
+        # Khởi tạo scraper với browser hiện tại
+        scraper = FacebookCommentScraper(driver=browser)
+        
+        # Cào comment - KHÔNG truyền post_url để tránh mở link lần 2
+        comments = scraper.extract_comments_from_current_page()
+        
+        if comments:
+            log_message(f"📊 Cào được {len(comments)} comment", logging.INFO)
+            
+            # Phân loại comment và reply
+            root_comments = []  # Comments gốc (không có reply_comment_id)
+            reply_comments = []  # Replies (có reply_comment_id)
+            
+            for comment_data in comments:
+                reply_comment_id = comment_data.get('reply_comment_id', 'None')
+                if reply_comment_id and reply_comment_id != 'None':
+                    reply_comments.append(comment_data)
+                else:
+                    root_comments.append(comment_data)
+            
+            log_message(f"📊 Phân loại: {len(root_comments)} comment gốc, {len(reply_comments)} reply", logging.INFO)
+            
+            # Sử dụng hàm update_post_structure_with_new_comments đã cải tiến
+            new_comments_added, new_replies_added = update_post_structure_with_new_comments(post_id, comments)
+            
+            # Thông báo kết quả
+            if new_comments_added > 0 or new_replies_added > 0:
+                log_message(f"✅ Đã thêm {new_comments_added} comment mới và {new_replies_added} reply mới vào structure", logging.INFO)
+            else:
+                log_message("ℹ️ Không có comment/reply mới để thêm", logging.INFO)
+                
+        else:
+            log_message("❌ Không cào được comment nào", logging.WARNING)
+        
+        # **THÊM: Đóng popup/modal sau khi cào xong**
+        try:
+            log_message("🔒 Đóng popup/modal sau khi cào comment...", logging.INFO)
+            
+            # Thử các cách đóng popup khác nhau
+            close_methods = [
+                # Nhấn ESC
+                lambda: browser.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE),
+                # Tìm nút X đóng
+                lambda: browser.find_element(By.CSS_SELECTOR, "[aria-label='Đóng'], [aria-label='Close']").click(),
+                # Tìm nút đóng khác
+                lambda: browser.find_element(By.CSS_SELECTOR, "div[role='button'][aria-label*='Đóng'], div[role='button'][aria-label*='Close']").click(),
+                # Click outside modal
+                lambda: browser.execute_script("document.querySelector('[role=dialog]') && document.querySelector('[role=dialog]').parentElement.click()"),
+            ]
+            
+            for i, method in enumerate(close_methods):
+                try:
+                    method()
+                    await asyncio.sleep(1)
+                    log_message(f"✅ Đã đóng popup bằng phương pháp {i+1}", logging.INFO)
+                    break
+                except:
+                    continue
+                    
+        except Exception as close_error:
+            log_message(f"⚠️ Không thể đóng popup: {close_error}", logging.WARNING)
+            
+    except Exception as e:
+        log_message(f"❌ Lỗi trong hàm crawl_comments_and_update_structure: {e}", logging.ERROR)
+        traceback.print_exc()
+
+# Hàm cập nhật comment/reply mới vào post structure
+def update_post_structure_with_new_comments(post_id, scraped_comments):
+    """Cập nhật những comment/reply mới vào cấu trúc post hiện có"""
+    try:
+        data = load_post_structure()
+        
+        if post_id not in data["posts"]:
+            log_message(f"❌ Post ID {post_id} không tồn tại trong structure", logging.WARNING)
+            return 0, 0
+        
+        existing_comment_ids = set(data["posts"][post_id]["comments"].keys())
+        new_comments_count = 0
+        new_replies_count = 0
+        
+        log_message(f"🔍 Đang xử lý {len(scraped_comments)} comment/reply được cào", logging.INFO)
+        
+        # Tách comment và reply dựa trên reply_comment_id
+        comments = []
+        replies = []
+        
+        for c in scraped_comments:
+            reply_comment_id = c.get('reply_comment_id', 'None')
+            comment_id = c.get('comment_id', 'None')
+            
+            if reply_comment_id and reply_comment_id != 'None':
+                # Có reply_comment_id => đây là reply
+                # comment_id là ID của parent comment, reply_comment_id là ID của reply
+                replies.append(c)
+                log_message(f"📝 Phân loại là REPLY: reply_id={reply_comment_id} (parent: {comment_id})", logging.INFO)
+            else:
+                # Không có reply_comment_id => đây là comment gốc
+                comments.append(c)
+                log_message(f"💬 Phân loại là COMMENT: {comment_id}", logging.INFO)
+        
+        log_message(f"📊 Phân loại: {len(comments)} comment gốc, {len(replies)} reply", logging.INFO)
+        
+        # **BƯỚC 1: Xử lý comment gốc trước để đảm bảo parent tồn tại**
+        for comment in comments:
+            comment_id = comment.get('comment_id', 'None')
+            comment_text = comment.get('text', '')  # Sửa từ 'comment_text' thành 'text'
+            
+            if comment_id == 'None' or not comment_text:
+                log_message(f"⚠️ Bỏ qua comment thiếu ID hoặc content: {comment_id}", logging.WARNING)
+                continue
+                
+            # Kiểm tra comment mới hoặc cập nhật placeholder
+            if comment_id not in existing_comment_ids:
+                # Thêm comment mới
+                data["posts"][post_id]["comments"][comment_id] = {
+                    "comment_fb_id": comment_id,
+                    "content": comment_text,
+                    "commenter_name": comment.get('commentor', ''),  # Sửa từ 'commenter_name' thành 'commentor'
+                    "commenter_link": comment.get('link_commenter', ''),  # Sửa từ 'commenter_link' thành 'link_commenter'
+                    "comment_date": comment.get('date_comment', ''),  # Sửa từ 'comment_date' thành 'date_comment'
+                    "link_comment": comment.get('link_comment', ''),
+                    "replies": {},
+                    "created_at": datetime.now().isoformat(),
+                    "scraped_at": datetime.now().isoformat()
+                }
+                new_comments_count += 1
+                log_message(f"➕ Thêm comment mới: {comment_id} - {comment_text[:50]}...", logging.INFO)
+            else:
+                # Kiểm tra nếu comment hiện tại là placeholder thì cập nhật
+                existing_comment = data["posts"][post_id]["comments"][comment_id]
+                if existing_comment.get("content", "") == "[Comment gốc chưa được cào]":
+                    existing_comment.update({
+                        "content": comment_text,
+                        "commenter_name": comment.get('commentor', ''),
+                        "commenter_link": comment.get('link_commenter', ''),
+                        "comment_date": comment.get('date_comment', ''),
+                        "link_comment": comment.get('link_comment', ''),
+                        "scraped_at": datetime.now().isoformat()
+                    })
+                    log_message(f"🔄 Cập nhật placeholder comment: {comment_id} - {comment_text[:50]}...", logging.INFO)
+                else:
+                    log_message(f"ℹ️ Comment đã tồn tại: {comment_id}", logging.INFO)
+        
+        # **BƯỚC 2: Xử lý reply sau khi đã có comment gốc**
+        for reply in replies:
+            parent_comment_id = reply.get('comment_id', 'None')  # ID của comment cha
+            reply_id = reply.get('reply_comment_id', 'None')  # ID của reply
+            reply_text = reply.get('text', '')  # Sửa từ 'comment_text' thành 'text'
+            
+            if reply_id == 'None' or not reply_text:
+                log_message(f"⚠️ Bỏ qua reply thiếu ID hoặc content: {reply_id}", logging.WARNING)
+                continue
+            
+            if parent_comment_id == 'None':
+                log_message(f"⚠️ Reply {reply_id} không có parent comment ID", logging.WARNING)
+                continue
+            
+            # Đảm bảo parent comment tồn tại (nếu không có thì tạo placeholder)
+            if parent_comment_id not in data["posts"][post_id]["comments"]:
+                log_message(f"⚠️ Parent comment {parent_comment_id} chưa tồn tại, tạo placeholder", logging.WARNING)
+                data["posts"][post_id]["comments"][parent_comment_id] = {
+                    "comment_fb_id": parent_comment_id,
+                    "content": "[Comment gốc chưa được cào]",
+                    "commenter_name": "",
+                    "commenter_link": "",
+                    "comment_date": "",
+                    "link_comment": "",
+                    "replies": {},
+                    "created_at": datetime.now().isoformat(),
+                    "scraped_at": datetime.now().isoformat()
+                }
+            
+            # Kiểm tra reply đã tồn tại chưa
+            existing_reply_ids = set(data["posts"][post_id]["comments"][parent_comment_id]["replies"].keys())
+            
+            if reply_id not in existing_reply_ids:
+                # Thêm reply mới
+                data["posts"][post_id]["comments"][parent_comment_id]["replies"][reply_id] = {
+                    "reply_fb_id": reply_id,
+                    "content": reply_text,
+                    "commenter_name": reply.get('commentor', ''),  # Sửa key
+                    "commenter_link": reply.get('link_commenter', ''),  # Sửa key
+                    "comment_date": reply.get('date_comment', ''),  # Sửa key
+                    "link_comment": reply.get('link_comment', ''),
+                    "created_at": datetime.now().isoformat(),
+                    "scraped_at": datetime.now().isoformat()
+                }
+                new_replies_count += 1
+                log_message(f"➕ Thêm reply mới: {reply_id} cho comment {parent_comment_id} - {reply_text[:50]}...", logging.INFO)
+            else: 
+                log_message(f"ℹ️ Reply đã tồn tại: {reply_id} trong comment {parent_comment_id}", logging.INFO)
+        
+        # Lưu structure đã cập nhật
+        if new_comments_count > 0 or new_replies_count > 0:
+            save_post_structure(data)
+            log_message(f"✅ Đã cập nhật {new_comments_count} comment mới và {new_replies_count} reply mới cho post {post_id}", logging.INFO)
+        else:
+            log_message(f"ℹ️ Không có comment/reply mới cho post {post_id}", logging.INFO)
+        
+        return new_comments_count, new_replies_count
+        
+    except Exception as e:
+        log_message(f"❌ Lỗi khi cập nhật post structure: {e}", logging.ERROR)
+        traceback.print_exc()
+        return 0, 0
+
+# Hàm cào comment tự động từ tất cả post trong structure
+async def auto_crawl_comments_from_structure(browser):
+    """Tự động cào comment từ tất cả bài post trong post_structure.json và tự động cập nhật structure"""
+    try:
+        data = load_post_structure()
+        posts = data.get("posts", {})
+        
+        if not posts:
+            log_message("📝 Không có post nào trong structure để cào comment", logging.INFO)
+            return
+        
+        log_message(f"🔄 Bắt đầu cào comment tự động từ {len(posts)} bài post", logging.INFO)
+        
+        total_processed = 0
+        
+        for post_id, post_data in posts.items():
+            try:
+                post_url = post_data.get("url", "")
+                if not post_url:
+                    log_message(f"⚠️ Post {post_id} không có URL, bỏ qua", logging.WARNING)
+                    continue
+                
+                log_message(f"🔍 Đang cào comment từ post: {post_id}", logging.INFO)
+                log_message(f"🔗 URL: {post_url}", logging.INFO)
+                
+                # Sử dụng hàm cào comment và tự động cập nhật structure với post_id cụ thể
+                await crawl_comments_and_update_structure(browser, post_url, post_id)
+                total_processed += 1
+                
+                # Nghỉ giữa các post để tránh spam
+                await asyncio.sleep(random.uniform(3, 6))
+                
+            except Exception as post_error:
+                log_message(f"❌ Lỗi khi cào post {post_id}: {post_error}", logging.ERROR)
+                continue
+        
+        log_message(f"🎉 Hoàn thành cào comment tự động!", logging.INFO)
+        log_message(f"📈 Đã xử lý {total_processed}/{len(posts)} bài post", logging.INFO)
+            
+    except Exception as e:
+        log_message(f"❌ Lỗi trong hàm auto_crawl_comments_from_structure: {e}", logging.ERROR)
+        traceback.print_exc()
+
+# Hàm cào comment thủ công từ URL hiện tại
+async def manual_crawl_current_page(browser):
+    """Cào comment từ trang hiện tại và thêm vào structure"""
+    try:
+        current_url = browser.current_url
+        log_message(f"🔍 Cào comment thủ công từ trang hiện tại: {current_url}", logging.INFO)
+        
+        await crawl_comments_and_update_structure(browser)
+        
+    except Exception as e:
+        log_message(f"❌ Lỗi trong manual_crawl_current_page: {e}", logging.ERROR)
+
+# Biến global để theo dõi thời gian cào comment tự động
+last_auto_crawl_time = None
+AUTO_CRAWL_INTERVAL = 120  # 2 phút = 120 giây
+
+# Hàm kiểm tra và thực hiện cào comment tự động theo chu kỳ
+async def check_and_run_auto_crawl(browser):
+    """Kiểm tra và chạy cào comment tự động mỗi 2 phút"""
+    global last_auto_crawl_time
+    
+    try:
+        current_time = time.time()
+        
+        # Lần đầu chạy hoặc đã qua 2 phút
+        if last_auto_crawl_time is None or (current_time - last_auto_crawl_time) >= AUTO_CRAWL_INTERVAL:
+            log_message("⏰ Đến lúc cào comment tự động (mỗi 2 phút)", logging.INFO)
+            
+            # Dừng tất cả hoạt động khác
+            global stop_browsing
+            original_stop_browsing = stop_browsing
+            stop_browsing = True
+            
+            try:
+                await auto_crawl_comments_from_structure(browser)
+                last_auto_crawl_time = current_time
+                log_message(f"✅ Hoàn thành chu kỳ cào comment tự động lúc {datetime.now().strftime('%H:%M:%S')}", logging.INFO)
+            finally:
+                # Khôi phục trạng thái ban đầu
+                stop_browsing = original_stop_browsing
+        
+    except Exception as e:
+        log_message(f"❌ Lỗi trong hàm check_and_run_auto_crawl: {e}", logging.ERROR)
+
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
     browser = None
@@ -3057,6 +3984,9 @@ async def main(client_user_id_chat):
 
         while True:
             try:
+                # Kiểm tra và chạy cào comment tự động mỗi 2 phút
+                await check_and_run_auto_crawl(browser)
+                
                 # Kiểm tra nếu có tin mới từ WebSocket thì ưu tiên xử lý ngay
                 global stop_browsing
                 if stop_browsing and pending_posts:
@@ -3073,6 +4003,9 @@ async def main(client_user_id_chat):
                     elif pending_posts[0].get("type") == "reply_reply_comment":
                         log_message("Có yêu cầu trả lời reply comment từ WebSocket, dừng TẤT CẢ hoạt động và trả lời reply ngay lập tức", logging.INFO)
                         await reply_to_reply_comment(browser)
+                    elif pending_posts[0].get("type") == "crawl_comments":
+                        log_message("Có yêu cầu cào comment từ WebSocket, dừng TẤT CẢ hoạt động và cào comment ngay lập tức", logging.INFO)
+                        await crawl_comments_from_websocket(browser)
                     else:
                         log_message(f"Loại dữ liệu không xác định từ WebSocket: {pending_posts[0].get('type')}", logging.WARNING)
                         pending_posts.pop(0)  # Xóa dữ liệu không xác định

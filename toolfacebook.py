@@ -964,18 +964,6 @@ async def comment_on_post_url(browser):
                     async def send_comment_result():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # # Sử dụng lại clientId đã đăng ký
-                                # global current_client_id
-                                # if current_client_id:
-                                #     register_message = {
-                                #         "type": "register",
-                                #         "clientId": current_client_id
-                                #     }
-                                    
-                                #     await websocket.send(json.dumps(register_message))
-                                #     log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                #     await asyncio.sleep(0.5)
-                                
                                 # Gửi kết quả bình luận
                                 await websocket.send(json.dumps(comment_result))
                                 log_message("✅ Đã gửi kết quả bình luận (có comment_id) về bên A!", logging.INFO)
@@ -1024,16 +1012,8 @@ async def comment_on_post_url(browser):
                 async def send_error_result():
                     try:
                         async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            # global current_client_id
-                            # if current_client_id:
-                            #     register_message = {
-                            #         "type": "register",
-                            #         "clientId": current_client_id
-                            #     }
-                            #     await websocket.send(json.dumps(register_message))
-                            #     await asyncio.sleep(0.5)
                             
-                            # await websocket.send(json.dumps(error_result))
+                            await websocket.send(json.dumps(error_result))
                             log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
                     except:
                         pass
@@ -3690,6 +3670,8 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
         log_message(f"📊 Phân loại: {len(comments)} comment gốc, {len(replies)} reply", logging.INFO)
         
         # **BƯỚC 1: Xử lý comment gốc trước để đảm bảo parent tồn tại**
+        new_comments_to_send = []  # Danh sách comment mới để gửi qua WebSocket
+        
         for comment in comments:
             comment_id = comment.get('comment_id', 'None')
             comment_text = comment.get('text', '')  # Sửa từ 'comment_text' thành 'text'
@@ -3714,6 +3696,20 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                 }
                 new_comments_count += 1
                 log_message(f"➕ Thêm comment mới: {comment_id} - {comment_text[:50]}...", logging.INFO)
+                
+                # Thêm vào danh sách để gửi qua WebSocket
+                new_comments_to_send.append({
+                    'type': 'comment_byB',
+                    'postId': post_id,
+                    'content': comment_text,
+                    'authorId': get_websocket_role(),  # Sử dụng roleWebSocket làm authorId
+                    'authorName': comment.get('commentor', 'Anonymous'),
+                    'URL': comment.get('link_comment', ''),
+                    'commentFbId': comment_id,
+                    'linkUserComment': comment.get('link_commenter', ''),  # Link profile người comment
+                    'timestamp': datetime.now().isoformat()
+                })
+                
             else:
                 # Kiểm tra nếu comment hiện tại là placeholder thì cập nhật
                 existing_comment = data["posts"][post_id]["comments"][comment_id]
@@ -3731,6 +3727,8 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                     log_message(f"ℹ️ Comment đã tồn tại: {comment_id}", logging.INFO)
         
         # **BƯỚC 2: Xử lý reply sau khi đã có comment gốc**
+        new_replies_to_send = []  # Danh sách reply mới để gửi qua WebSocket
+        
         for reply in replies:
             parent_comment_id = reply.get('comment_id', 'None')  # ID của comment cha
             reply_id = reply.get('reply_comment_id', 'None')  # ID của reply
@@ -3776,6 +3774,57 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                 }
                 new_replies_count += 1
                 log_message(f"➕ Thêm reply mới: {reply_id} cho comment {parent_comment_id} - {reply_text[:50]}...", logging.INFO)
+                
+                # Thêm vào danh sách để gửi qua WebSocket
+                new_replies_to_send.append({
+                    'type': 'reply_comment_byB',
+                    'postId': post_id,
+                    'commentId': parent_comment_id,
+                    'replyId': reply_id,
+                    'content': reply_text,
+                    'authorId': get_websocket_role(),  # Sử dụng roleWebSocket làm authorId
+                    'authorName': reply.get('commentor', 'Anonymous'),
+                    'URL': reply.get('link_comment', ''),
+                    'linkUserReply': reply.get('link_commenter', ''),  # Link profile người reply
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            else:
+                log_message(f"ℹ️ Reply đã tồn tại: {reply_id} trong comment {parent_comment_id}", logging.INFO)
+                continue
+            
+            # Đảm bảo parent comment tồn tại (nếu không có thì tạo placeholder)
+            if parent_comment_id not in data["posts"][post_id]["comments"]:
+                log_message(f"⚠️ Parent comment {parent_comment_id} chưa tồn tại, tạo placeholder", logging.WARNING)
+                data["posts"][post_id]["comments"][parent_comment_id] = {
+                    "comment_fb_id": parent_comment_id,
+                    "content": "[Comment gốc chưa được cào]",
+                    "commenter_name": "",
+                    "commenter_link": "",
+                    "comment_date": "",
+                    "link_comment": "",
+                    "replies": {},
+                    "created_at": datetime.now().isoformat(),
+                    "scraped_at": datetime.now().isoformat()
+                }
+            
+            # Kiểm tra reply đã tồn tại chưa
+            existing_reply_ids = set(data["posts"][post_id]["comments"][parent_comment_id]["replies"].keys())
+            
+            if reply_id not in existing_reply_ids:
+                # Thêm reply mới
+                data["posts"][post_id]["comments"][parent_comment_id]["replies"][reply_id] = {
+                    "reply_fb_id": reply_id,
+                    "content": reply_text,
+                    "commenter_name": reply.get('commentor', ''),  # Sửa key
+                    "commenter_link": reply.get('link_commenter', ''),  # Sửa key
+                    "comment_date": reply.get('date_comment', ''),  # Sửa key
+                    "link_comment": reply.get('link_comment', ''),
+                    "created_at": datetime.now().isoformat(),
+                    "scraped_at": datetime.now().isoformat()
+                }
+                new_replies_count += 1
+                log_message(f"➕ Thêm reply mới: {reply_id} cho comment {parent_comment_id} - {reply_text[:50]}...", logging.INFO)
             else: 
                 log_message(f"ℹ️ Reply đã tồn tại: {reply_id} trong comment {parent_comment_id}", logging.INFO)
         
@@ -3783,6 +3832,49 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
         if new_comments_count > 0 or new_replies_count > 0:
             save_post_structure(data)
             log_message(f"✅ Đã cập nhật {new_comments_count} comment mới và {new_replies_count} reply mới cho post {post_id}", logging.INFO)
+            
+            # **GỬI DỮ LIỆU QUA WEBSOCKET**
+            async def send_new_data_to_websocket():
+                """Gửi comment và reply mới qua WebSocket"""
+                try:
+                    async with websockets.connect(WEBSOCKET_URL) as websocket:
+                        # Gửi các comment mới
+                        for comment_data in new_comments_to_send:
+                            # Thêm thông tin user_id từ tài khoản hiện tại
+                            user_ids = get_id_tosend_websocket()
+                            comment_data["to"] = user_ids
+                            
+                            await websocket.send(json.dumps(comment_data))
+                            log_message(f"📤 Đã gửi comment mới qua WebSocket: {comment_data['commentFbId']}", logging.INFO)
+                            await asyncio.sleep(0.1)  # Delay nhỏ giữa các message
+                        
+                        # Gửi các reply mới
+                        for reply_data in new_replies_to_send:
+                            # Thêm thông tin user_id từ tài khoản hiện tại
+                            user_ids = get_id_tosend_websocket()
+                            reply_data["to"] = user_ids
+                            
+                            await websocket.send(json.dumps(reply_data))
+                            log_message(f"📤 Đã gửi reply mới qua WebSocket: {reply_data['replyId']} cho comment {reply_data['commentId']}", logging.INFO)
+                            await asyncio.sleep(0.1)  # Delay nhỏ giữa các message
+                            
+                except Exception as ws_error:
+                    log_message(f"❌ Lỗi khi gửi dữ liệu qua WebSocket: {ws_error}", logging.ERROR)
+            
+            # Chạy gửi WebSocket (nếu có data mới)
+            if new_comments_to_send or new_replies_to_send:
+                try:
+                    import asyncio
+                    # Kiểm tra xem có event loop đang chạy không
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Nếu có loop đang chạy, tạo task
+                        asyncio.create_task(send_new_data_to_websocket())
+                    except RuntimeError:
+                        # Nếu không có loop, chạy trực tiếp
+                        asyncio.run(send_new_data_to_websocket())
+                except Exception as async_error:
+                    log_message(f"❌ Lỗi khi chạy async WebSocket: {async_error}", logging.ERROR)
         else:
             log_message(f"ℹ️ Không có comment/reply mới cho post {post_id}", logging.INFO)
         

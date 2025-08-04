@@ -31,7 +31,7 @@
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1788663783,
+        "expiry": 1788857697,
         "httpOnly": true,
         "name": "datr",
         "path": "/",
@@ -46,21 +46,21 @@
         "path": "/",
         "sameSite": "Lax",
         "secure": true,
-        "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1754106110051%2C%22v%22%3A1%7D"
+        "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1754298082550%2C%22v%22%3A1%7D"
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1761879783,
+        "expiry": 1762073697,
         "httpOnly": true,
         "name": "fr",
         "path": "/",
         "sameSite": "None",
         "secure": true,
-        "value": "1JEyC58jiABYOlOfP.AWcWbMMDsuWSEOwm7oe9lXpmIhnvhaQkteGqocn1lp8xas9fIGE.BojX_n..AAA.0.0.BojX_n.AWchGyrtQFv_iYWy95IFTakGh5o"
+        "value": "1EgP09lnQvYFtpmUc.AWdzCw5T0Nk-Yb-9407NjhRV6LgcNlDpGIJ8mE6hVGousFHi1-8.BokHVg..AAA.0.0.BokHVg.AWeVhT79kzFk9gjYZ8oGofovKHQ"
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1754710909,
+        "expiry": 1754902882,
         "httpOnly": false,
         "name": "dpr",
         "path": "/",
@@ -70,17 +70,17 @@
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1785639783,
+        "expiry": 1785833697,
         "httpOnly": true,
         "name": "xs",
         "path": "/",
         "sameSite": "None",
         "secure": true,
-        "value": "33%3Atl1V_-XYxPGXlw%3A2%3A1754023486%3A-1%3A-1%3A%3AAcWzG8-GVNKwVYaRDJcu4C89hXVMAYavU0MmHrCWtQ"
+        "value": "33%3Atl1V_-XYxPGXlw%3A2%3A1754023486%3A-1%3A-1%3A%3AAcX5HaHAjW9dR-aUHxgucHP8DnxbOggDlxE1zhFGoQ"
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1785639783,
+        "expiry": 1785833697,
         "httpOnly": false,
         "name": "c_user",
         "path": "/",
@@ -90,7 +90,7 @@
     },
     {
         "domain": ".facebook.com",
-        "expiry": 1754710909,
+        "expiry": 1754902882,
         "httpOnly": false,
         "name": "wd",
         "path": "/",

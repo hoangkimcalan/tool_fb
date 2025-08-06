@@ -3987,6 +3987,64 @@ async def manual_crawl_current_page(browser):
         await send_crawl_status_to_websocket('error', error_message)
         log_message(f"❌ {error_message}", logging.ERROR)
 
+# Hàm cào data thông minh sau mỗi hoạt động
+async def smart_data_crawl_after_activity(browser, activity_name):
+    """Cào data một cách thông minh sau mỗi hoạt động"""
+    try:
+        current_url = browser.current_url
+        
+        # Kiểm tra xem có phải đang ở trang Facebook post không
+        if not current_url or "facebook.com" not in current_url:
+            log_message(f"⚠️ Không ở trang Facebook, bỏ qua cào data sau {activity_name}", logging.INFO)
+            return
+        
+        # Kiểm tra xem có phải trang post có comment không
+        is_post_page = any(pattern in current_url for pattern in [
+            "/posts/", "/photo", "/video", "/story", "/permalink", "story_fbid="
+        ])
+        
+        if not is_post_page:
+            log_message(f"⚠️ Trang hiện tại không phải post page, bỏ qua cào data sau {activity_name}", logging.INFO)
+            return
+        
+        log_message(f"🔍 Phát hiện trang post, tiến hành cào data sau {activity_name}", logging.INFO)
+        
+        # Kiểm tra xem có comment box không
+        try:
+            comment_indicators = browser.find_elements(By.CSS_SELECTOR, 
+                "div[role='article'], [aria-label*='bình luận'], [aria-label*='comment']")
+            
+            if not comment_indicators:
+                log_message(f"⚠️ Không tìm thấy comment box, bỏ qua cào data sau {activity_name}", logging.INFO)
+                return
+                
+        except Exception:
+            log_message(f"⚠️ Lỗi khi kiểm tra comment box, bỏ qua cào data sau {activity_name}", logging.WARNING)
+            return
+        
+        # Thực hiện cào comment
+        log_message(f"✅ Bắt đầu cào data sau hoạt động: {activity_name}", logging.INFO)
+        await send_crawl_status_to_websocket('started', f'Cào data sau {activity_name}: {current_url}', 1, 0)
+        
+        await crawl_comments_and_update_structure(browser)
+        
+        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào data sau {activity_name}', 1, 1)
+        log_message(f"✅ Hoàn thành cào data sau hoạt động: {activity_name}", logging.INFO)
+        
+    except Exception as e:
+        error_message = f"Lỗi khi cào data sau {activity_name}: {e}"
+        await send_crawl_status_to_websocket('error', error_message)
+        log_message(f"❌ {error_message}", logging.ERROR)
+        
+        # **GỬI THÔNG BÁO HOÀN THÀNH CÀO COMMENT THỦ CÔNG**
+        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào comment thủ công: {current_url}', 1, 1)
+        
+    except Exception as e:
+        # **GỬI THÔNG BÁO LỖI CÀO COMMENT THỦ CÔNG**
+        error_message = f"Lỗi trong manual_crawl_current_page: {e}"
+        await send_crawl_status_to_websocket('error', error_message)
+        log_message(f"❌ {error_message}", logging.ERROR)
+
 # Hàm gửi thông báo trạng thái cào comment qua WebSocket
 async def send_crawl_status_to_websocket(status, message="", post_count=0, current_post=0):
     """Gửi thông báo trạng thái cào comment qua WebSocket"""
@@ -4166,7 +4224,7 @@ async def main(client_user_id_chat):
 
         while True:
             try:
-                # Kiểm tra và chạy cào comment tự động mỗi 2 phút
+                # Kiểm tra và chạy cào comment tự động
                 await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra nếu có tin mới từ WebSocket thì ưu tiên xử lý ngay
@@ -4201,6 +4259,10 @@ async def main(client_user_id_chat):
                 if not stop_browsing:
                     await surf_facebook("", random.choice(COMMENTS), browser)
                     await asyncio.sleep(random.uniform(2, 4))
+                    
+                    # Cào data thông minh sau khi lướt Facebook
+                    if not stop_browsing:
+                        await smart_data_crawl_after_activity(browser, "lướt Facebook")
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4210,6 +4272,10 @@ async def main(client_user_id_chat):
                 # 2. Xem video
                 if not stop_browsing:
                     await watch_videos(browser, actions = ActionChains(browser))
+                    
+                    # Cào data thông minh sau khi xem video
+                    if not stop_browsing:
+                        await smart_data_crawl_after_activity(browser, "xem video")
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4220,6 +4286,10 @@ async def main(client_user_id_chat):
                 if not stop_browsing:
                     await post_news_feed(browser)
                     await asyncio.sleep(random.uniform(2, 4))
+                    
+                    # Cào data thông minh sau khi đăng bài
+                    if not stop_browsing:
+                        await smart_data_crawl_after_activity(browser, "đăng bài")
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4230,6 +4300,10 @@ async def main(client_user_id_chat):
                 if not stop_browsing:
                     await list_friend(browser)
                     await asyncio.sleep(random.uniform(2, 4))
+                    
+                    # Cào data thông minh sau khi nhắn tin bạn bè  
+                    if not stop_browsing:
+                        await smart_data_crawl_after_activity(browser, "nhắn tin bạn bè")
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4240,6 +4314,10 @@ async def main(client_user_id_chat):
                 if not stop_browsing:
                     await add_friend(browser)
                     await asyncio.sleep(random.uniform(200, 300))
+                    
+                    # Cào data thông minh sau khi kết bạn
+                    if not stop_browsing:
+                        await smart_data_crawl_after_activity(browser, "kết bạn")
                 
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

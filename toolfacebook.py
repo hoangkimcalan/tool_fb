@@ -1451,15 +1451,7 @@ async def reply_to_comment(browser):
                 async def send_error_result():
                     try:
                         async with websockets.connect(WEBSOCKET_URL) as websocket:
-                            # if current_client_id:
-                            #     register_message = {
-                            #         "type": "register",
-                            #         "clientId": current_client_id
-                            #     }
-                            #     await websocket.send(json.dumps(register_message))
-                            #     await asyncio.sleep(0.5)
-                            
-                            # await websocket.send(json.dumps(error_result))
+                            await websocket.send(json.dumps(error_result))
                             log_message("📤 Đã gửi thông báo lỗi về bên A", logging.INFO)
                     except:
                         pass
@@ -1844,16 +1836,6 @@ async def reply_to_reply_comment(browser):
                     async def send_reply_to_reply_result():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # # Sử dụng lại clientId đã đăng ký
-                                # if current_client_id:
-                                #     register_message = {
-                                #         "type": "register",
-                                #         "clientId": current_client_id
-                                #     }
-                                    
-                                #     await websocket.send(json.dumps(register_message))
-                                #     log_message(f"📝 Sử dụng lại clientId: {current_client_id}", logging.INFO)
-                                #     await asyncio.sleep(0.5)
                                 
                                 # # Gửi kết quả trả lời reply
                                 await websocket.send(json.dumps(reply_to_reply_result))
@@ -3543,6 +3525,45 @@ class FacebookCommentScraper:
         if self.driver:
             self.driver.quit()
 
+# Hàm cào comment theo yêu cầu từ WebSocket
+async def crawl_comments_from_websocket(browser):
+    """Xử lý yêu cầu cào comment từ WebSocket"""
+    try:
+        global pending_posts
+        
+        if not pending_posts:
+            log_message("❌ Không có yêu cầu cào comment từ WebSocket", logging.WARNING)
+            await send_crawl_status_to_websocket('error', 'Không có yêu cầu cào comment từ WebSocket')
+            return
+            
+        request_data = pending_posts.pop(0)
+        post_url = request_data.get("post_url", "")
+        post_id = request_data.get("post_id", "websocket_post")
+        
+        if not post_url:
+            log_message("❌ WebSocket request thiếu post_url", logging.WARNING)
+            await send_crawl_status_to_websocket('error', 'WebSocket request thiếu post_url')
+            return
+            
+        log_message(f"🔍 Bắt đầu cào comment theo yêu cầu WebSocket - URL: {post_url}", logging.INFO)
+        
+        # **GỬI THÔNG BÁO BẮT ĐẦU CÀO COMMENT TỪ WEBSOCKET**
+        await send_crawl_status_to_websocket('started', f'Bắt đầu cào comment từ WebSocket: {post_url}', 1, 0)
+        
+        # Sử dụng hàm cào comment hiện có
+        await crawl_comments_and_update_structure(browser, post_url, post_id)
+        
+        # **GỬI THÔNG BÁO HOÀN THÀNH CÀO COMMENT TỪ WEBSOCKET**
+        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào comment từ WebSocket: {post_url}', 1, 1)
+        log_message("✅ Hoàn thành cào comment theo yêu cầu WebSocket", logging.INFO)
+        
+    except Exception as e:
+        # **GỬI THÔNG BÁO LỖI CÀO COMMENT TỪ WEBSOCKET**
+        error_message = f"Lỗi khi cào comment từ WebSocket: {e}"
+        await send_crawl_status_to_websocket('error', error_message)
+        log_message(f"❌ {error_message}", logging.ERROR)
+        traceback.print_exc()
+
 # Hàm cào comment và tự động thêm vào structure
 async def crawl_comments_and_update_structure(browser, post_url=None, target_post_id=None):
     """Cào comment từ URL hiện tại hoặc URL cụ thể và tự động thêm vào structure"""
@@ -3894,9 +3915,11 @@ async def auto_crawl_comments_from_structure(browser):
         
         if not posts:
             log_message("📝 Không có post nào trong structure để cào comment", logging.INFO)
+            await send_crawl_status_to_websocket('finished', 'Không có post nào để cào comment', 0, 0)
             return
         
-        log_message(f"🔄 Bắt đầu cào comment tự động từ {len(posts)} bài post", logging.INFO)
+        total_posts = len(posts)
+        log_message(f"🔄 Bắt đầu cào comment tự động từ {total_posts} bài post", logging.INFO)
         
         total_processed = 0
         
@@ -3907,24 +3930,39 @@ async def auto_crawl_comments_from_structure(browser):
                     log_message(f"⚠️ Post {post_id} không có URL, bỏ qua", logging.WARNING)
                     continue
                 
-                log_message(f"🔍 Đang cào comment từ post: {post_id}", logging.INFO)
+                total_processed += 1
+                
+                # **GỬI THÔNG BÁO TIẾN TRÌNH CÀO COMMENT**
+                progress_message = f"Đang cào comment từ post {total_processed}/{total_posts}: {post_id}"
+                await send_crawl_status_to_websocket('progress', progress_message, total_posts, total_processed)
+                
+                log_message(f"🔍 Đang cào comment từ post: {post_id} ({total_processed}/{total_posts})", logging.INFO)
                 log_message(f"🔗 URL: {post_url}", logging.INFO)
                 
                 # Sử dụng hàm cào comment và tự động cập nhật structure với post_id cụ thể
                 await crawl_comments_and_update_structure(browser, post_url, post_id)
-                total_processed += 1
                 
                 # Nghỉ giữa các post để tránh spam
                 await asyncio.sleep(random.uniform(3, 6))
                 
             except Exception as post_error:
                 log_message(f"❌ Lỗi khi cào post {post_id}: {post_error}", logging.ERROR)
+                # **GỬI THÔNG BÁO LỖI CHO POST CỤ THỂ**
+                error_message = f"Lỗi khi cào post {post_id}: {post_error}"
+                await send_crawl_status_to_websocket('error', error_message, total_posts, total_processed)
                 continue
         
+        # **GỬI THÔNG BÁO HOÀN THÀNH TẤT CẢ POST**
+        final_message = f"Hoàn thành cào comment tự động! Đã xử lý {total_processed}/{total_posts} bài post"
+        await send_crawl_status_to_websocket('finished', final_message, total_posts, total_processed)
+        
         log_message(f"🎉 Hoàn thành cào comment tự động!", logging.INFO)
-        log_message(f"📈 Đã xử lý {total_processed}/{len(posts)} bài post", logging.INFO)
+        log_message(f"📈 Đã xử lý {total_processed}/{total_posts} bài post", logging.INFO)
             
     except Exception as e:
+        # **GỬI THÔNG BÁO LỖI TỔNG QUÁT**
+        error_message = f"Lỗi nghiêm trọng trong auto_crawl_comments_from_structure: {e}"
+        await send_crawl_status_to_websocket('error', error_message)
         log_message(f"❌ Lỗi trong hàm auto_crawl_comments_from_structure: {e}", logging.ERROR)
         traceback.print_exc()
 
@@ -3935,14 +3973,52 @@ async def manual_crawl_current_page(browser):
         current_url = browser.current_url
         log_message(f"🔍 Cào comment thủ công từ trang hiện tại: {current_url}", logging.INFO)
         
+        # **GỬI THÔNG BÁO BẮT ĐẦU CÀO COMMENT THỦ CÔNG**
+        await send_crawl_status_to_websocket('started', f'Bắt đầu cào comment thủ công: {current_url}', 1, 0)
+        
         await crawl_comments_and_update_structure(browser)
         
+        # **GỬI THÔNG BÁO HOÀN THÀNH CÀO COMMENT THỦ CÔNG**
+        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào comment thủ công: {current_url}', 1, 1)
+        
     except Exception as e:
-        log_message(f"❌ Lỗi trong manual_crawl_current_page: {e}", logging.ERROR)
+        # **GỬI THÔNG BÁO LỖI CÀO COMMENT THỦ CÔNG**
+        error_message = f"Lỗi trong manual_crawl_current_page: {e}"
+        await send_crawl_status_to_websocket('error', error_message)
+        log_message(f"❌ {error_message}", logging.ERROR)
+
+# Hàm gửi thông báo trạng thái cào comment qua WebSocket
+async def send_crawl_status_to_websocket(status, message="", post_count=0, current_post=0):
+    """Gửi thông báo trạng thái cào comment qua WebSocket"""
+    user_ids = get_id_tosend_websocket()
+    try:
+        # Tạo message thông báo trạng thái
+        status_message = {
+            'type': 'crawl_comment',
+            'status': status,  # 'started', 'progress', 'completed', 'error'
+            'message': message,
+            'postCount': post_count,
+            'currentPost': current_post,
+            'timestamp': datetime.now().isoformat(),
+            'authorId': get_websocket_role(),
+            'facebookId': get_websocket_role(),  # facebookId = roleWebSocket
+            'to': user_ids,
+        }
+        
+        # Gửi qua WebSocket
+        try:
+            async with websockets.connect(WEBSOCKET_URL) as websocket:
+                await websocket.send(json.dumps(status_message))
+                log_message(f"📡 Đã gửi thông báo trạng thái cào comment: {status} - {message} (facebookId: {get_websocket_role()})", logging.INFO)
+        except Exception as ws_error:
+            log_message(f"❌ Lỗi khi gửi thông báo trạng thái qua WebSocket: {ws_error}", logging.WARNING)
+            
+    except Exception as e:
+        log_message(f"❌ Lỗi trong send_crawl_status_to_websocket: {e}", logging.ERROR)
 
 # Biến global để theo dõi thời gian cào comment tự động
 last_auto_crawl_time = None
-AUTO_CRAWL_INTERVAL = 120  # 2 phút = 120 giây
+AUTO_CRAWL_INTERVAL = 3600  # 2 phút = 120 giây
 
 # Hàm kiểm tra và thực hiện cào comment tự động theo chu kỳ
 async def check_and_run_auto_crawl(browser):
@@ -3956,6 +4032,9 @@ async def check_and_run_auto_crawl(browser):
         if last_auto_crawl_time is None or (current_time - last_auto_crawl_time) >= AUTO_CRAWL_INTERVAL:
             log_message("⏰ Đến lúc cào comment tự động (mỗi 2 phút)", logging.INFO)
             
+            # **GỬI THÔNG BÁO BẮT ĐẦU CÀO COMMENT**
+            await send_crawl_status_to_websocket('started', 'Bắt đầu cào comment tự động')
+            
             # Dừng tất cả hoạt động khác
             global stop_browsing
             original_stop_browsing = stop_browsing
@@ -3964,7 +4043,18 @@ async def check_and_run_auto_crawl(browser):
             try:
                 await auto_crawl_comments_from_structure(browser)
                 last_auto_crawl_time = current_time
-                log_message(f"✅ Hoàn thành chu kỳ cào comment tự động lúc {datetime.now().strftime('%H:%M:%S')}", logging.INFO)
+                
+                # **GỬI THÔNG BÁO HOÀN THÀNH CÀO COMMENT**
+                completion_message = f"Hoàn thành chu kỳ cào comment tự động lúc {datetime.now().strftime('%H:%M:%S')}"
+                await send_crawl_status_to_websocket('finished', completion_message)
+                log_message(f"✅ {completion_message}", logging.INFO)
+                
+            except Exception as crawl_error:
+                # **GỬI THÔNG BÁO LỖI CÀO COMMENT**
+                error_message = f"Lỗi khi cào comment: {crawl_error}"
+                await send_crawl_status_to_websocket('error', error_message)
+                log_message(f"❌ {error_message}", logging.ERROR)
+                raise crawl_error
             finally:
                 # Khôi phục trạng thái ban đầu
                 stop_browsing = original_stop_browsing
@@ -4067,8 +4157,8 @@ async def main(client_user_id_chat):
         if '"userID":' in page_source:
             start = page_source.find('"userID":') + len('"userID":')
             end = page_source.find(',', start)
-            id_fb = page_source[start:end]
-            log_message(f'id_fb: {id_fb}')
+            id_fb = page_source[start:end].strip('"')  # Loại bỏ dấu nháy nếu có
+            log_message(f'Facebook ID thực tế: {id_fb}', logging.INFO)
 
         # Khởi động WebSocket task
         websocket_task = asyncio.create_task(connect_websocket())

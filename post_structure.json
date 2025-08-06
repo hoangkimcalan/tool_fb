@@ -101,9 +101,61 @@
           },
           "created_at": "2025-08-04T16:02:35.417341",
           "scraped_at": "2025-08-04T16:02:35.417347"
+        },
+        "2144523769365882": {
+          "comment_fb_id": "2144523769365882",
+          "content": "20",
+          "commenter_name": "Sơn Nguyễn",
+          "commenter_link": "https://www.facebook.com/than.kiem.7165?comment_id=Y29tbWVudDo3NDgxNzI5ODE0MzM3MTZfMjE0NDUyMzc2OTM2NTg4Mg%3D%3D&__cft__[0]=AZWOgHhS946_RuGphIUWKYt-Fw5aC2i8ZA1ezL2YQoaonykMAXQH5Px3Gm954bToWBu6M1OVImK3IJNp3GObRYv7wf7Pm8Almgwsxj-UNk-QsP7r8SyXphlOo047jLBFfLU&__tn__=R]-R",
+          "comment_date": "2025-08-05",
+          "link_comment": "https://www.facebook.com/gian.vu.792551/posts/pfbid02erQKuVCSaAsTjXkp7rVtAjzmEddHw47cD7iKCd9YErYVGz9QxT1YtkAjx1MVhzczl?comment_id=2144523769365882&__cft__[0]=AZWOgHhS946_RuGphIUWKYt-Fw5aC2i8ZA1ezL2YQoaonykMAXQH5Px3Gm954bToWBu6M1OVImK3IJNp3GObRYv7wf7Pm8Almgwsxj-UNk-QsP7r8SyXphlOo047jLBFfLU&__tn__=R]-R",
+          "replies": {},
+          "created_at": "2025-08-05T08:18:07.900978",
+          "scraped_at": "2025-08-05T08:18:07.900982"
         }
       },
       "created_at": "2025-08-01T12:07:38.204518"
+    },
+    "1754357618353": {
+      "url": "https://www.facebook.com/gian.vu.792551/posts/pfbid0359DL5uH8YERFUKeTQpZcBmRQfLAK5agUyjwyXodLrHHG6pggGRWiwqoEkSBxV6pbl",
+      "post_id": "1754357618353",
+      "comments": {
+        "2044139152660065": {
+          "comment_fb_id": "2044139152660065",
+          "content": "hehehe",
+          "replies": {
+            "1092138259050824": {
+              "reply_fb_id": "1092138259050824",
+              "content": "dfdf",
+              "commenter_name": "Giản Vũ",
+              "commenter_link": "https://www.facebook.com/gian.vu.792551?comment_id=Y29tbWVudDo3NTEzMjgyOTQ0NTE1MThfMTA5MjEzODI1OTA1MDgyNA%3D%3D&__cft__[0]=AZV-cwmatLridTtlhsd8oysWEwKb0Ct9B1EFaZSc0ICuAI8AFnwQMU4-NdlSlQDwJVg4c2bPNcWv7QjXpAmn4wegvbWc4oSYmpLz03e7MxLc5A-GpUKsSm539w74VBOEiLc&__tn__=R]-R",
+              "comment_date": "2025-08-05",
+              "link_comment": "https://www.facebook.com/gian.vu.792551/posts/pfbid0359DL5uH8YERFUKeTQpZcBmRQfLAK5agUyjwyXodLrHHG6pggGRWiwqoEkSBxV6pbl?comment_id=2044139152660065&reply_comment_id=1092138259050824&__cft__[0]=AZV-cwmatLridTtlhsd8oysWEwKb0Ct9B1EFaZSc0ICuAI8AFnwQMU4-NdlSlQDwJVg4c2bPNcWv7QjXpAmn4wegvbWc4oSYmpLz03e7MxLc5A-GpUKsSm539w74VBOEiLc&__tn__=R]-R",
+              "created_at": "2025-08-05T09:32:40.730366",
+              "scraped_at": "2025-08-05T09:32:40.730370"
+            },
+            "1254576176320168": {
+              "reply_fb_id": "1254576176320168",
+              "content": "hehehehe",
+              "created_at": "2025-08-05T09:40:22.933436"
+            }
+          },
+          "created_at": "2025-08-05T08:47:52.970573"
+        },
+        "717940634397729": {
+          "comment_fb_id": "717940634397729",
+          "content": "hehehehe",
+          "replies": {},
+          "created_at": "2025-08-05T09:46:59.382505"
+        },
+        "737192719276622": {
+          "comment_fb_id": "737192719276622",
+          "content": "ihihihihi",
+          "replies": {},
+          "created_at": "2025-08-06T08:20:17.672211"
+        }
+      },
+      "created_at": "2025-08-05T08:36:26.097066"
     }
   }
 }

@@ -5,7 +5,7 @@
     "facebook_username": "gianvu17607@gmail.com",
     "facebook_password": "lvqh1234",
     "facebook_2fa_code": "",
-    "note": "Chị Dung",
+    "note": "Sơn",
     "roleWebSocket": "B22858640",
     "nameFb": "Giản Vũ",
     "to": "22858640"
@@ -13,56 +13,34 @@
   {
     "user_id_QLC": "22789191",
     "user_id_chat": "10593919",
-    "facebook_username": "pncmgv3ai1@tidissajiiu.com",
-    "facebook_password": "5samiul29",
+    "facebook_username": "0966026485",
+    "facebook_password": "hieu18",
     "facebook_2fa_code": "",
     "note": "Chị Nhạn",
-    "roleWebSocket": "B22858640",
-    "to": "22858640",
-    "nameFb": "Giản Vũ"
+    "roleWebSocket": "B22789191",
+    "to": "22614471",
+    "nameFb": "Hoàng Hiếu"
   },
   {
-    "user_id_QLC": "22616467",
-    "user_id_chat": "110406719",
-    "facebook_username": "6lw7cuwzb4@vafyxh.com",
-    "facebook_password": "5samiul29",
+    "user_id_QLC": "22614471",
+    "user_id_chat": "10404601",
+    "facebook_username": "901763358",
+    "facebook_password": "tuyendung123",
     "facebook_2fa_code": "",
-    "note": "Chị Linh",
-    "roleWebSocket": "C22858640",
-    "to": "22858640",
-    "nameFb": "Giản Vũ"
+    "note": "Chị Liên",
+    "roleWebSocket": "B22614471",
+    "to": "22614471",
+    "nameFb": "Gia Giang"
   },
   {
-    "user_id_QLC": "22636101",
-    "user_id_chat": "10427357",
-    "facebook_username": "xqiexghxt7@vwhins.com",
-    "facebook_password": "orko@29",
+    "user_id_QLC": "22735395",
+    "user_id_chat": "10534007",
+    "facebook_username": "0382785319",
+    "facebook_password": "hhp123988",
     "facebook_2fa_code": "",
-    "note": "Chị Thùy",
-    "roleWebSocket": "D22858640",
-    "to": "22858640",
-    "nameFb": "Giản Vũ"
-  },
-  {
-    "user_id_QLC": "22854836",
-    "user_id_chat": "10664762",
-    "facebook_username": "ywtzc31ziq@smykwb.com",
-    "facebook_password": "Tanha28",
-    "facebook_2fa_code": "",
-    "note": "Chị Ngân",
-    "roleWebSocket": "E22858640",
-    "to": "22858640",
-    "nameFb": "Giản Vũ"
-  },
-  {
-    "user_id_QLC": "22814414",
-    "user_id_chat": "10621100",
-    "facebook_username": "ggr81d87cc@qejjyl.com",
-    "facebook_password": "mizan29",
-    "facebook_2fa_code": "",
-    "note": "Chị Ngọc",
-    "roleWebSocket": "F22858640B",
-    "to": "22858640",
-    "nameFb": "Giản Vũ"
+    "note": "Chị Tâm",
+    "roleWebSocket": "B22735395",
+    "to": "22614471",
+    "nameFb": "Phương Nam"
   }
 ]

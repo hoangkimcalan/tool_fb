@@ -54,6 +54,12 @@ stop_browsing = False
 current_client_id = None
 # Lưu thông tin tài khoản hiện tại
 current_account_data = None
+
+# Biến đếm số lần kết bạn và quản lý thời gian
+friend_request_count = 0
+friend_request_date = None
+MAX_FRIEND_REQUESTS_PER_DAY = 30
+
 COMMENTS = [
     "Danh sách ứng viên trên Timviec365 thật sự rất chất lượng!",
     "Bạn nào đã sử dụng Timviec365 chưa? Đánh giá thế nào?",
@@ -173,6 +179,63 @@ def get_login_credentials():
     except Exception as e:
         log_message(f"Không thể đọc thông tin đăng nhập từ user_accounts.json: {e}", logging.ERROR)
         return None
+
+# Hàm quản lý đếm số lần kết bạn
+def reset_friend_request_counter():
+    """Reset counter nếu sang ngày mới"""
+    global friend_request_count, friend_request_date
+    current_date = datetime.now().date()
+    
+    if friend_request_date is None or friend_request_date != current_date:
+        friend_request_count = 0
+        friend_request_date = current_date
+        log_message(f"🔄 Reset counter kết bạn cho ngày mới: {current_date}", logging.INFO)
+        return True
+    return False
+
+def increment_friend_request_counter():
+    """Tăng counter số lần kết bạn"""
+    global friend_request_count
+    friend_request_count += 1
+    log_message(f"📊 Đã kết bạn lần thứ {friend_request_count}/{MAX_FRIEND_REQUESTS_PER_DAY} trong ngày", logging.INFO)
+    return friend_request_count
+
+def can_send_friend_request():
+    """Kiểm tra có thể gửi lời mời kết bạn không"""
+    reset_friend_request_counter()
+    return friend_request_count < MAX_FRIEND_REQUESTS_PER_DAY
+
+def get_friend_request_status():
+    """Lấy thông tin trạng thái kết bạn"""
+    reset_friend_request_counter()
+    remaining = MAX_FRIEND_REQUESTS_PER_DAY - friend_request_count
+    return {
+        "count": friend_request_count,
+        "max": MAX_FRIEND_REQUESTS_PER_DAY,
+        "remaining": remaining,
+        "date": friend_request_date.isoformat() if friend_request_date else None
+    }
+
+async def send_friend_request_status_to_websocket():
+    """Gửi thông tin trạng thái kết bạn qua WebSocket"""
+    try:
+        status = get_friend_request_status()
+        status_data = {
+            "type": "friend_request_status",
+            "status": status,
+            "authorName": get_facebook_name(),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Thêm thông tin user_id từ tài khoản hiện tại
+        user_ids = get_id_tosend_websocket()
+        status_data["to"] = user_ids
+        
+        async with websockets.connect(WEBSOCKET_URL) as websocket:
+            await websocket.send(json.dumps(status_data))
+            log_message("✅ Đã gửi thông tin trạng thái kết bạn qua WebSocket!", logging.INFO)
+    except Exception as e:
+        log_message(f"❌ Lỗi khi gửi trạng thái kết bạn qua WebSocket: {e}", logging.ERROR)
 
 # Hàm quản lý cấu trúc bài viết
 def load_post_structure():
@@ -2736,6 +2799,11 @@ async def add_friend(browser):
             log_message("Dừng add_friend do nhận được tin mới từ WebSocket", logging.INFO)
             return
             
+        # Kiểm tra giới hạn kết bạn trong ngày
+        if not can_send_friend_request():
+            log_message(f"⚠️ Đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY} lời mời kết bạn trong ngày. Bỏ qua hoạt động kết bạn.", logging.WARNING)
+            return
+            
         log_message("Bắt đầu quy trình thêm bạn bè.", logging.INFO)
 
         log_message("Tìm kiếm các nhóm tuyển dụng...", logging.INFO)
@@ -2843,10 +2911,14 @@ async def add_friend(browser):
         try:
             add_btn.click()
             log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name}!", logging.INFO)
+            # Tăng counter sau khi kết bạn thành công
+            increment_friend_request_counter()
         except Exception as click_err:
             log_message(f"Không thể click nút 'Kết bạn': {click_err}. Thử click bằng JavaScript.", logging.WARNING)
             browser.execute_script("arguments[0].click();", add_btn)
             log_message(f"Đã gửi lời mời kết bạn thành công tới {user_name} (qua JS click)!", logging.INFO)
+            # Tăng counter sau khi kết bạn thành công
+            increment_friend_request_counter()
 
         await asyncio.sleep(random.uniform(2, 4))
         
@@ -2870,6 +2942,13 @@ async def add_friend(browser):
             log_message("Sử dụng tin nhắn mặc định do không có nội dung từ WebSocket", logging.INFO)
         
         await send_message(browser, link_user, message_content)
+        
+        # Log thông tin trạng thái kết bạn sau khi hoàn thành
+        status = get_friend_request_status()
+        log_message(f"📈 Trạng thái kết bạn: {status['count']}/{status['max']} (còn lại: {status['remaining']})", logging.INFO)
+        
+        # Gửi thông tin trạng thái kết bạn qua WebSocket
+        await send_friend_request_status_to_websocket()
 
     except Exception as err:
         log_message(f"Lỗi tổng quát trong hàm add_friend: {err}", logging.ERROR)
@@ -2888,7 +2967,6 @@ async def surf_facebook(id, title, browser):
     if "facebook.com" not in current_url:
         browser.get("https://www.facebook.com")
         await asyncio.sleep(random.uniform(5, 8))  # Chờ trang tải xong
-
     try:
         await asyncio.sleep(random.uniform(3, 5))
         scroll_count = random.randint(14, 15)  # Số lần cuộn
@@ -4380,12 +4458,18 @@ async def main(client_user_id_chat):
                 
                 # 5. Kết bạn
                 if not stop_browsing:
-                    await add_friend(browser)
-                    await asyncio.sleep(random.uniform(200, 300))
-                    
-                    # Cào data thông minh sau khi kết bạn
-                    if not stop_browsing:
-                        await smart_data_crawl_after_activity(browser, "kết bạn")
+                    # Kiểm tra trạng thái kết bạn trước khi thực hiện
+                    status = get_friend_request_status()
+                    if status['remaining'] > 0:
+                        await add_friend(browser)
+                        await asyncio.sleep(random.uniform(200, 300))
+                        
+                        # Cào data thông minh sau khi kết bạn
+                        if not stop_browsing:
+                            await smart_data_crawl_after_activity(browser, "kết bạn")
+                    else:
+                        log_message(f"⏸️ Bỏ qua kết bạn - đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY}/ngày", logging.INFO)
+                        await asyncio.sleep(random.uniform(60, 120))  # Nghỉ ngắn thay vì kết bạn
                 
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

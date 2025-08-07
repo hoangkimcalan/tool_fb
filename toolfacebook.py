@@ -39,8 +39,8 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 
 # Constants
 COOKIE_FILE = "fb_cookies.json"
-# WEBSOCKET_URL = "ws://localhost:4000"
-WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
+WEBSOCKET_URL = "ws://localhost:4000"
+# WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
 POST_STRUCTURE_FILE = "post_structure.json"
 
 # Cấu hình cào comment
@@ -305,98 +305,131 @@ def get_post_structure_info(post_id):
         log_message(f"Lỗi khi lấy thông tin post structure: {e}", logging.ERROR)
         return None
 
-# Hàm kết nối WebSocket để nhận nội dung mới
+# Hàm kết nối WebSocket để nhận nội dung mới với auto-reconnect
 async def connect_websocket():
-    """Kết nối WebSocket để nhận nội dung bài viết mới"""
+    """Kết nối WebSocket để nhận nội dung bài viết mới với khả năng tự động kết nối lại"""
     global stop_browsing, current_client_id
     
-    try:
-        # Đọc role từ tài khoản hiện tại
-        current_client_id = get_websocket_role()
-        log_message(f"🔧 Sử dụng roleWebSocket: {current_client_id}", logging.INFO)
-
-        async with websockets.connect(WEBSOCKET_URL) as websocket:
-            log_message("Đã kết nối thành công tới WebSocket server!", logging.INFO)
-            register_message = {
-                "type": "register",
-                "clientId": current_client_id,
-            }
-            await websocket.send(json.dumps(register_message))
-            log_message(f"Đã gửi tin nhắn đăng ký với clientId: {current_client_id}", logging.INFO)
+    # Đọc role từ tài khoản hiện tại
+    current_client_id = get_websocket_role()
+    log_message(f"🔧 Sử dụng roleWebSocket: {current_client_id}", logging.INFO)
+    
+    reconnect_interval = 5  # Thời gian chờ trước khi kết nối lại (giây)
+    max_reconnect_interval = 60  # Thời gian chờ tối đa
+    
+    while True:  # Vòng lặp vô hạn để tự động kết nối lại
+        try:
+            log_message("🔄 Đang thử kết nối tới WebSocket server...", logging.INFO)
             
-            # Lắng nghe tin nhắn từ server
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    if data.get("type") == "new_post":
-                        log_message(f"Nhận được nội dung mới từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
+            async with websockets.connect(WEBSOCKET_URL) as websocket:
+                log_message("✅ Đã kết nối thành công tới WebSocket server!", logging.INFO)
+                
+                # Reset reconnect interval khi kết nối thành công
+                reconnect_interval = 5
+                
+                # Gửi tin nhắn đăng ký
+                register_message = {
+                    "type": "register",
+                    "clientId": current_client_id,
+                }
+                await websocket.send(json.dumps(register_message))
+                log_message(f"📋 Đã gửi tin nhắn đăng ký với clientId: {current_client_id}", logging.INFO)
+                
+                # Lắng nghe tin nhắn từ server
+                async for message in websocket:
+                    try:
+                        data = json.loads(message)
+                        if data.get("type") == "new_post":
+                            log_message(f"📬 Nhận được nội dung mới từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
+                            
+                            # Xử lý attachments nếu có
+                            attachments = data.get("attachments", [])
+                            downloaded_images = []
+                            
+                            if attachments:
+                                log_message(f"📎 Phát hiện {len(attachments)} attachments", logging.INFO)
+                                for attachment in attachments:
+                                    if attachment.get("type", "").startswith("image"):
+                                        image_url = attachment.get("url")
+                                        image_name = attachment.get("name", f"image_{int(time.time())}.jpg")
+                                        
+                                        if image_url:
+                                            log_message(f"📥 Đang tải ảnh: {image_name} từ {image_url}", logging.INFO)
+                                            downloaded_path = await download_image(image_url, image_name)
+                                            if downloaded_path:
+                                                downloaded_images.append(downloaded_path)
+                            
+                            # Thêm thông tin ảnh vào data
+                            data["downloaded_images"] = downloaded_images
+                            
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang đăng bài
+                            global stop_browsing
+                            stop_browsing = True
+                            log_message("🛑 Đã set flag để dừng lướt và chuyển sang đăng bài", logging.INFO)
+                            
+                        elif data.get("type") == "comment":
+                            log_message(f"💬 Nhận được yêu cầu bình luận từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
+                            log_message(f"🔗 URL bài viết: {data.get('URL', 'N/A')}", logging.INFO)
+                            
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang bình luận
+                            stop_browsing = True
+                            log_message("🛑 Đã set flag để dừng lướt và chuyển sang bình luận", logging.INFO)
+                            
+                        elif data.get("type") == "reply_comment":
+                            log_message(f"↩️ Nhận được yêu cầu phản hồi bình luận từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
+                            log_message(f"🔗 URL bài viết: {data.get('URL', 'N/A')}", logging.INFO)
+                            
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang bình luận
+                            stop_browsing = True
+                            log_message("🛑 Đã set flag để dừng lướt và chuyển sang bình luận", logging.INFO)
+                            
+                        elif data.get("type") == "reply_reply_comment":
+                            log_message(f"↪️ Nhận được yêu cầu trả lời reply comment từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
+                            log_message(f"🔗 URL: {data.get('URL', 'N/A')}", logging.INFO)
+                            log_message(f"💬 CommentId: {data.get('commentId', 'N/A')}", logging.INFO)
+                            log_message(f"↩️ ReplyId: {data.get('replyId', 'N/A')}", logging.INFO)
+                            
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang trả lời reply
+                            stop_browsing = True
+                            log_message("🛑 Đã set flag để dừng lướt và chuyển sang trả lời reply", logging.INFO)
+                            
+                        elif data.get("type") == "crawl_comment_by_CRM":
+                            log_message(f"🕷️ Nhận được yêu cầu cào comment từ CRM: facebookId={data.get('facebookId', 'N/A')}, authorId={data.get('authorId', 'N/A')}", logging.INFO)
+                            
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang cào comment tự động
+                            stop_browsing = True
+                            log_message("🛑 Đã set flag để dừng lướt và chuyển sang cào comment tự động từ CRM", logging.INFO)
+                            
+                        elif data.get("type") == "register_success":
+                            log_message("✅ Đăng ký WebSocket thành công!", logging.INFO)
+                        else:
+                            log_message(f"📨 Nhận được tin nhắn WebSocket khác: {data.get('type', 'unknown')}", logging.INFO)
+                            
+                    except json.JSONDecodeError:
+                        log_message(f"❌ Lỗi decode JSON từ WebSocket: {message}", logging.ERROR)
                         
-                        # Xử lý attachments nếu có
-                        attachments = data.get("attachments", [])
-                        downloaded_images = []
-                        
-                        if attachments:
-                            log_message(f"Phát hiện {len(attachments)} attachments", logging.INFO)
-                            for attachment in attachments:
-                                if attachment.get("type", "").startswith("image"):
-                                    image_url = attachment.get("url")
-                                    image_name = attachment.get("name", f"image_{int(time.time())}.jpg")
-                                    
-                                    if image_url:
-                                        log_message(f"Đang tải ảnh: {image_name} từ {image_url}", logging.INFO)
-                                        downloaded_path = await download_image(image_url, image_name)
-                                        if downloaded_path:
-                                            downloaded_images.append(downloaded_path)
-                        
-                        # Thêm thông tin ảnh vào data
-                        data["downloaded_images"] = downloaded_images
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang đăng bài
-                        global stop_browsing
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang đăng bài", logging.INFO)
-                    elif data.get("type") == "comment":
-                        log_message(f"Nhận được yêu cầu bình luận từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
-                        log_message(f"URL bài viết: {data.get('URL', 'N/A')}", logging.INFO)
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang bình luận
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang bình luận", logging.INFO)
-                    elif data.get("type") == "reply_comment":
-                        log_message(f"Nhận được yêu cầu phản hồi bình luận từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
-                        log_message(f"URL bài viết: {data.get('URL', 'N/A')}", logging.INFO)
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang bình luận
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang bình luận", logging.INFO)
-                    elif data.get("type") == "reply_reply_comment":
-                        log_message(f"Nhận được yêu cầu trả lời reply comment từ WebSocket: {data.get('content', '')[:50]}...", logging.INFO)
-                        log_message(f"URL: {data.get('URL', 'N/A')}", logging.INFO)
-                        log_message(f"CommentId: {data.get('commentId', 'N/A')}", logging.INFO)
-                        log_message(f"ReplyId: {data.get('replyId', 'N/A')}", logging.INFO)
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang trả lời reply
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang trả lời reply", logging.INFO)
-                    elif data.get("type") == "crawl_comment_by_CRM":
-                        log_message(f"Nhận được yêu cầu cào comment từ CRM: facebookId={data.get('facebookId', 'N/A')}, authorId={data.get('authorId', 'N/A')}", logging.INFO)
-                        
-                        pending_posts.append(data)
-                        # Set flag để dừng lướt và chuyển sang cào comment tự động
-                        stop_browsing = True
-                        log_message("Đã set flag để dừng lướt và chuyển sang cào comment tự động từ CRM", logging.INFO)
-                    elif data.get("type") == "register_success":
-                        log_message("Đăng ký WebSocket thành công!", logging.INFO)
-                    else:
-                        log_message(f"Nhận được tin nhắn WebSocket khác: {data.get('type', 'unknown')}", logging.INFO)
-                except json.JSONDecodeError:
-                    log_message(f"Lỗi decode JSON từ WebSocket: {message}", logging.ERROR)
-    except Exception as e:
-        log_message(f"Lỗi kết nối WebSocket: {e}. Sẽ thử kết nối lại sau.", logging.ERROR)
+        except websockets.exceptions.ConnectionClosed:
+            log_message("⚠️ WebSocket connection bị đóng. Sẽ thử kết nối lại...", logging.WARNING)
+        except websockets.exceptions.InvalidStatusCode as e:
+            log_message(f"❌ WebSocket status code không hợp lệ: {e}. Sẽ thử kết nối lại...", logging.ERROR)
+        except websockets.exceptions.WebSocketException as e:
+            log_message(f"❌ WebSocket error: {e}. Sẽ thử kết nối lại...", logging.ERROR)
+        except Exception as e:
+            log_message(f"❌ Lỗi kết nối WebSocket: {e}. Sẽ thử kết nối lại...", logging.ERROR)
+        
+        # Đợi trước khi thử kết nối lại
+        log_message(f"⏳ Đợi {reconnect_interval} giây trước khi kết nối lại WebSocket...", logging.INFO)
+        await asyncio.sleep(reconnect_interval)
+        
+        # Tăng thời gian chờ dần để tránh spam kết nối
+        reconnect_interval = min(reconnect_interval * 1.5, max_reconnect_interval)
+        
+        log_message("🔄 Đang thử kết nối lại WebSocket...", logging.INFO)
 
 # Hàm tải ảnh từ URL
 async def download_image(url, filename):
@@ -4235,10 +4268,27 @@ async def main(client_user_id_chat):
 
         # Khởi động WebSocket task
         websocket_task = asyncio.create_task(connect_websocket())
-        log_message("Đã khởi động WebSocket task để nhận nội dung", logging.INFO)
+        log_message("🚀 Đã khởi động WebSocket task để nhận nội dung", logging.INFO)
 
         while True:
             try:
+                # KIỂM TRA VÀ RESTART WEBSOCKET TASK NẾU CẦN
+                if websocket_task.done():
+                    # WebSocket task đã dừng, cần restart
+                    log_message("⚠️ WebSocket task đã dừng, đang restart...", logging.WARNING)
+                    try:
+                        # Lấy exception nếu có để log
+                        websocket_exception = websocket_task.exception()
+                        if websocket_exception:
+                            log_message(f"❌ WebSocket task lỗi: {websocket_exception}", logging.ERROR)
+                    except:
+                        pass
+                    
+                    # Restart WebSocket task
+                    websocket_task = asyncio.create_task(connect_websocket())
+                    log_message("🔄 Đã restart WebSocket task thành công", logging.INFO)
+                    await asyncio.sleep(2)  # Đợi một chút để task khởi động
+                
                 # Kiểm tra và chạy cào comment tự động
                 await check_and_run_auto_crawl(browser)
                 

@@ -39,7 +39,7 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 
 # Constants
 COOKIE_FILE = "fb_cookies.json"
-WEBSOCKET_URL = "ws://localhost:4000"
+WEBSOCKET_URL = "ws://123.24.206.25:4000"
 # WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
 POST_STRUCTURE_FILE = "post_structure.json"
 
@@ -327,32 +327,30 @@ def add_reply_to_structure(post_id, comment_id, reply_fb_id, reply_content=""):
         log_message(f"Lỗi khi thêm reply vào structure: {e}", logging.ERROR)
         return None
 
-def check_comment_exists(post_id, comment_content):
-    """Kiểm tra comment đã tồn tại trong post chưa"""
+def check_comment_exists(post_id, comment_id):
+    """Kiểm tra comment đã tồn tại trong post chưa (chỉ kiểm tra theo ID)"""
     try:
         data = load_post_structure()
         
         if post_id in data["posts"]:
-            for comment_id, comment_data in data["posts"][post_id]["comments"].items():
-                if comment_data.get("content", "").strip() == comment_content.strip():
-                    log_message(f"Comment đã tồn tại: {comment_id}", logging.WARNING)
-                    return True
+            if comment_id in data["posts"][post_id]["comments"]:
+                log_message(f"Comment đã tồn tại: {comment_id}", logging.WARNING)
+                return True
         
         return False
     except Exception as e:
         log_message(f"Lỗi khi kiểm tra comment: {e}", logging.ERROR)
         return False
 
-def check_reply_exists(post_id, comment_id, reply_content):
-    """Kiểm tra reply đã tồn tại trong comment chưa"""
+def check_reply_exists(post_id, comment_id, reply_id):
+    """Kiểm tra reply đã tồn tại trong comment chưa (chỉ kiểm tra theo ID)"""
     try:
         data = load_post_structure()
         
         if post_id in data["posts"] and comment_id in data["posts"][post_id]["comments"]:
-            for reply_id, reply_data in data["posts"][post_id]["comments"][comment_id]["replies"].items():
-                if reply_data.get("content", "").strip() == reply_content.strip():
-                    log_message(f"Reply đã tồn tại: {reply_id}", logging.WARNING)
-                    return True
+            if reply_id in data["posts"][post_id]["comments"][comment_id]["replies"]:
+                log_message(f"Reply đã tồn tại: {reply_id}", logging.WARNING)
+                return True
         
         return False
     except Exception as e:
@@ -774,11 +772,6 @@ async def comment_on_post_url(browser):
                 extracted_post_id = post_id_match.group(1)
             else:
                 extracted_post_id = post_url  # Use full URL as fallback
-        
-        # Kiểm tra comment đã tồn tại chưa
-        if extracted_post_id and check_comment_exists(extracted_post_id, comment_content):
-            log_message("Comment này đã tồn tại trong post, bỏ qua việc bình luận", logging.WARNING)
-            return
         
         # Truy cập URL bài viết
         browser.get(post_url)
@@ -1208,12 +1201,6 @@ async def reply_to_comment(browser):
             else:
                 extracted_post_id = comment_url  # Use full URL as fallback
         
-        # Kiểm tra reply đã tồn tại chưa (nếu có post_id và comment_id)
-        if extracted_post_id and comment_id_from_websocket:
-            if check_reply_exists(extracted_post_id, comment_id_from_websocket, reply_content):
-                log_message("Reply này đã tồn tại trong comment, bỏ qua việc reply", logging.WARNING)
-                return
-        
         # Điều hướng đến URL bình luận
         log_message("Đang điều hướng đến URL bình luận...", logging.INFO)
         browser.get(comment_url)
@@ -1601,12 +1588,6 @@ async def reply_to_reply_comment(browser):
             else:
                 extracted_post_id = comment_url  # Use full URL as fallback
         
-        # Kiểm tra reply đã tồn tại chưa (kiểm tra với cả comment_id và reply_id)
-        if extracted_post_id and comment_id_from_websocket:
-            if check_reply_exists(extracted_post_id, comment_id_from_websocket, reply_content):
-                log_message("Reply này đã tồn tại, bỏ qua việc reply to reply", logging.WARNING)
-                return
-        
         # Điều hướng đến URL
         log_message("Đang điều hướng đến URL...", logging.INFO)
         browser.get(comment_url)
@@ -1817,7 +1798,7 @@ async def reply_to_reply_comment(browser):
                 log_message("Đã gửi trả lời reply thành công!", logging.INFO)
                 await asyncio.sleep(3)
                 
-                # Tìm timestamp của reply to reply trong comment container (giống như reply_to_comment)
+                # Tìm timestamp của reply to reply trong comment container (sử dụng logic giống reply_to_comment)
                 try:
                     log_message("Đang tìm timestamp của reply to reply trong comment container...", logging.INFO)
                     
@@ -1828,48 +1809,21 @@ async def reply_to_reply_comment(browser):
                     # Đợi một chút để reply xuất hiện trong DOM
                     await asyncio.sleep(2)
                     
-                    # Tìm lại comment container chứa comment gốc (không phải reply container)
-                    comment_container_for_timestamp = None
-                    try:
-                        comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id_from_websocket}')]")
-                        if comment_links:
-                            # Tìm container cha chứa link này
-                            for link in comment_links:
-                                try:
-                                    # Tìm container cha có class chính xác là x18xomjl xbcz3fp (chứa cả comment và replies)
-                                    container = link.find_element(By.XPATH, "./ancestor::div[@class='x18xomjl xbcz3fp'][1]")
-                                    if container:
-                                        comment_container_for_timestamp = container
-                                        log_message(f"Tìm thấy comment container cho timestamp", logging.INFO)
-                                        break
-                                except Exception:
-                                    continue
-                    except Exception as container_err:
-                        log_message(f"Lỗi khi tìm comment container cho timestamp: {container_err}", logging.WARNING)
-                    
+                    # Tìm lại comment container để có phần tử mới (giống như trong reply_to_comment)
+                    comment_container_for_timestamp = await find_comment_container(browser, comment_id_from_websocket)
                     if not comment_container_for_timestamp:
-                        log_message(" Không tìm thấy comment container cho timestamp, sử dụng reply container", logging.WARNING)
-                        comment_container_for_timestamp = reply_container
+                        log_message(" Không tìm thấy comment container sau khi reply to reply", logging.WARNING)
+                        return
                     
-                    # Tìm tất cả timestamp, ưu tiên reply_comment_id (lọc bỏ reply cũ)
+                    # Tìm tất cả timestamp, ưu tiên reply_comment_id (giống logic reply_to_comment)
                     reply_timestamps = comment_container_for_timestamp.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
-                    
-                    # Lọc bỏ timestamp của reply cũ mà mình đang trả lời
-                    new_reply_timestamps = []
-                    for timestamp in reply_timestamps:
-                        timestamp_href = timestamp.get_attribute('href')
-                        if f"reply_comment_id={reply_id_from_websocket}" not in timestamp_href:
-                            new_reply_timestamps.append(timestamp)
-                    
-                    log_message(f"Tìm thấy {len(new_reply_timestamps)} timestamp mới (không phải reply cũ)", logging.INFO)
 
-                    if new_reply_timestamps:
-                        # Lấy timestamp reply mới nhất (không phải của reply cũ)
-                        timestamp_element = new_reply_timestamps[-1]
-                        timestamp_href = timestamp_element.get_attribute('href')
-                        log_message(f"Tìm thấy reply to reply timestamp: {timestamp_href}", logging.INFO)
+                    if reply_timestamps:
+                        # Lấy timestamp reply mới nhất
+                        timestamp_element = reply_timestamps[-1]
+                        log_message(f"Tìm thấy reply to reply timestamp: {timestamp_element.get_attribute('href')}", logging.INFO)
                     else:
-                        # Nếu không có reply_comment_id mới, tìm tất cả timestamp và lấy mới nhất
+                        # Nếu không có reply_comment_id, tìm tất cả timestamp và lấy mới nhất
                         all_timestamps = comment_container_for_timestamp.find_elements(By.XPATH, ".//a[contains(@href, 'comment_id')]")
                         
                         # Debug: In ra tất cả timestamps
@@ -1879,15 +1833,8 @@ async def reply_to_reply_comment(browser):
                             text = ts.text.strip() if ts.text else "No text"
                             log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
                         
-                        # Lọc và lấy timestamp khác với reply cũ
-                        filtered_timestamps = []
-                        for ts in all_timestamps:
-                            ts_href = ts.get_attribute('href')
-                            if f"reply_comment_id={reply_id_from_websocket}" not in ts_href:
-                                filtered_timestamps.append(ts)
-                        
-                        if filtered_timestamps:
-                            timestamp_element = filtered_timestamps[-1]
+                        if all_timestamps:
+                            timestamp_element = all_timestamps[-1]
                             log_message(f"Tìm thấy timestamp (fallback): {timestamp_element.get_attribute('href')}", logging.INFO)
                         else:
                             log_message(" Không tìm thấy timestamp nào", logging.WARNING)
@@ -1922,12 +1869,12 @@ async def reply_to_reply_comment(browser):
                                         log_message(f"Lấy được Reply to Reply ID: {reply_to_reply_id}", logging.INFO)
                                         break
                                 except Exception as pattern_err:
-                                    log_message(f"Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
+                                    log_message(f" Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
                         else:
-                            log_message("URL không thay đổi sau khi click timestamp", logging.WARNING)
+                            log_message(" URL không thay đổi sau khi click timestamp", logging.WARNING)
                                 
                     except Exception as click_err:
-                        log_message(f"Lỗi khi click timestamp reply to reply: {click_err}", logging.WARNING)
+                        log_message(f" Lỗi khi click timestamp reply to reply: {click_err}", logging.WARNING)
                         
                 except Exception as reply_id_error:
                     log_message(f"Lỗi khi lấy reply to reply id: {reply_id_error}", logging.ERROR)
@@ -2980,6 +2927,12 @@ async def add_friend(browser):
             log_message("Sử dụng tin nhắn mặc định do không có nội dung từ WebSocket", logging.INFO)
         
         await send_message(browser, link_user, message_content)
+
+        # Thoát khỏi trang cá nhân, quay về trang chủ Facebook
+        browser.get("https://www.facebook.com")
+        await asyncio.sleep(random.uniform(2, 4))
+        log_message("Đã thoát khỏi trang cá nhân, quay về trang chủ Facebook", logging.INFO)
+
         
         # Log thông tin trạng thái kết bạn sau khi hoàn thành
         status = get_friend_request_status()

@@ -39,7 +39,8 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 
 # Constants
 COOKIE_FILE = "fb_cookies.json"
-WEBSOCKET_URL = "ws://123.24.206.25:4000"
+# WEBSOCKET_URL = "ws://123.24.206.25:4000"
+WEBSOCKET_URL = "ws://localhost:4000"
 # WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
 POST_STRUCTURE_FILE = "post_structure.json"
 
@@ -1598,54 +1599,36 @@ async def reply_to_reply_comment(browser):
         reply_container = None
         
         try:
-            # Phương pháp 1: Tìm theo href chứa reply_comment_id
+            # Tìm theo href chứa reply_comment_id và mở rộng đến container có class cụ thể
             reply_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
             if reply_links:
-                # Tìm container cha chứa link reply này - sử dụng container nhỏ nhất chứa reply cụ thể
-                found = False
-                for lidx, link in enumerate(reply_links):
-                    if found:
-                        break
-                    
+                # Tìm container cha có class 'x6s0dn4 x3nfvp2'
+                for link in reply_links:
                     try:
-                        # Tìm container cha gần nhất có chứa nút reply cho reply này
-                        # Không dùng class cố định mà tìm container có chứa cả link reply và nút trả lời
-                        possible_containers = link.find_elements(By.XPATH, "./ancestor::div[.//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời') or contains(@aria-label, 'Reply'))]]")
-                        
-                        # Lọc container nhỏ nhất có chứa đúng reply ID này
-                        for container in possible_containers:
-                            # Kiểm tra container này có chứa đúng reply ID không
+                        # Mở rộng từ thẻ a đến khi gặp container có class cụ thể
+                        container = link.find_element(By.XPATH, "./ancestor::div[@class='x6s0dn4 x3nfvp2'][1]")
+                        if container:
+                            # Kiểm tra container này có chứa reply link không
                             check_links = container.find_elements(By.XPATH, f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
                             if check_links:
-                                # Kiểm tra xem container này có phải là container riêng cho reply này không
-                                # bằng cách đảm bảo nó không chứa các reply khác
-                                other_reply_links = container.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id=') and not(contains(@href, 'reply_comment_id={reply_id_from_websocket}'))]")
-                                
-                                # Nếu container này chỉ chứa reply mình cần (hoặc ít reply khác nhất)
-                                if len(other_reply_links) <= 1:  # Cho phép tối đa 1 reply khác để tránh container quá rộng
-                                    reply_container = container
-                                    log_message(f"Tìm thấy container chính xác cho replyId: {reply_id_from_websocket} (chứa {len(other_reply_links)} reply khác)", logging.INFO)
-                                    found = True
-                                    break
-                        
-                        if found:
-                            break
-                            
+                                reply_container = container
+                                log_message(f"Tìm thấy reply container với class cụ thể cho replyId: {reply_id_from_websocket}", logging.INFO)
+                                break
                     except Exception as e:
-                        log_message(f"Lỗi khi tìm container cho link {lidx}: {e}", logging.WARNING)
+                        log_message(f"Lỗi khi tìm container với class cụ thể: {e}", logging.WARNING)
                         continue
                 
-                # Nếu không tìm được container chính xác, thử cách backup
-                if not found:
+                # Nếu không tìm được container với class cụ thể, thử fallback
+                if not reply_container:
                     for link in reply_links:
                         try:
-                            # Tìm container nhỏ nhất chứa reply này
-                            container = link.find_element(By.XPATH, "./ancestor::div[position()=1 and .//div[@role='button']]")
+                            # Fallback: tìm container cha gần nhất có chứa nút button
+                            container = link.find_element(By.XPATH, "./ancestor::div[.//div[@role='button']][1]")
                             if container:
                                 check_links = container.find_elements(By.XPATH, f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
                                 if check_links:
                                     reply_container = container
-                                    log_message(f"Tìm thấy container backup cho ReplyId: {reply_id_from_websocket}", logging.INFO)
+                                    log_message(f"Tìm thấy reply container fallback cho ReplyId: {reply_id_from_websocket}", logging.INFO)
                                     break
                         except Exception:
                             continue
@@ -1658,52 +1641,30 @@ async def reply_to_reply_comment(browser):
             log_message(f" Không tìm thấy container chứa CommentId: {comment_id_from_websocket} và ReplyId: {reply_id_from_websocket}", logging.ERROR)
             return
         
-        # Tìm nút Trả lời trong container đó (tìm nút trả lời gần với reply cụ thể)
+        # Tìm nút Trả lời trong reply container
         reply_button = None
         try:
-            # Tìm nút Trả lời cụ thể gần với reply có replyId
+            # Tìm nút Trả lời đơn giản trong reply container
             reply_selectors = [
-                # Tìm nút trả lời ngay sau link reply cụ thể
-                f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]/following-sibling::*//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời') or contains(@aria-label, 'Reply'))][1]",
-                # Tìm nút trả lời trong cùng parent với link reply
-                f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]/parent::*/following-sibling::*//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời') or contains(@aria-label, 'Reply'))][1]",
-                # Tìm nút trả lời trong cùng level với link reply
-                f".//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]/ancestor::div[1]//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời') or contains(@aria-label, 'Reply'))][last()]",
-                # Backup: tìm nút trả lời cuối cùng trong container (có thể là của reply này)
-                ".//div[@role='button' and (contains(text(), 'Trả lời') or contains(@aria-label, 'Trả lời') or contains(@aria-label, 'Reply'))][last()]"
+                ".//div[@role='button' and normalize-space(text())='Trả lời']",
+                ".//div[@role='button' and contains(@aria-label, 'Trả lời')]",
+                ".//div[@role='button' and contains(text(), 'Trả lời')]",
+                ".//span[normalize-space(text())='Trả lời']/ancestor::div[@role='button'][1]"
             ]
             
             for selector in reply_selectors:
                 try:
-                    log_message(f"DEBUG: Đang thử selector tìm nút trả lời: {selector}", logging.INFO)
                     reply_buttons = reply_container.find_elements(By.XPATH, selector)
-                    log_message(f"DEBUG: Tìm thấy {len(reply_buttons)} nút trả lời với selector này", logging.INFO)
-                    
                     for btn in reply_buttons:
-                        btn_text = btn.text.strip() if btn.text else ""
-                        btn_aria_label = btn.get_attribute('aria-label') or ""
-                        log_message(f"    Button: Text='{btn_text}', Aria-label='{btn_aria_label}', Displayed={btn.is_displayed()}, Enabled={btn.is_enabled()}", logging.INFO)
-                        
                         if btn.is_displayed() and btn.is_enabled():
-                            # Kiểm tra xem nút này có gần với reply link không
-                            try:
-                                # Tìm xem có link reply gần nút này không
-                                nearby_reply_links = btn.find_elements(By.XPATH, f"./ancestor::div[1]//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
-                                if nearby_reply_links or selector.endswith("[last()]"):  # Nếu tìm thấy link gần hoặc là selector backup
-                                    reply_button = btn
-                                    log_message(f"Chọn nút trả lời này (gần với reply link)!", logging.INFO)
-                                    break
-                            except:
-                                # Nếu không kiểm tra được, vẫn chọn nút này
-                                reply_button = btn
-                                log_message(f"Chọn nút trả lời này (fallback)!", logging.INFO)
-                                break
-                    
+                            reply_button = btn
+                            btn_text = btn.text.strip() if btn.text else ""
+                            btn_aria_label = btn.get_attribute('aria-label') or ""
+                            log_message(f"Tìm thấy nút Trả lời trong reply container - Text: '{btn_text}', Aria-label: '{btn_aria_label}'", logging.INFO)
+                            break
                     if reply_button:
-                        log_message(f"Đã tìm thấy nút trả lời phù hợp với selector: {selector}", logging.INFO)
                         break
-                except Exception as e:
-                    log_message(f"Lỗi khi thử selector '{selector}': {e}", logging.WARNING)
+                except Exception:
                     continue
                         
         except Exception as e:

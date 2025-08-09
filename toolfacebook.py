@@ -20,6 +20,7 @@ import websockets
 from datetime import datetime
 import pyperclip
 import csv
+import psutil
 import pandas as pd
 from datetime import timedelta
 
@@ -4197,9 +4198,20 @@ async def check_and_run_auto_crawl(browser):
         
     except Exception as e:
         log_message(f" Lỗi trong hàm check_and_run_auto_crawl: {e}", logging.ERROR)
+def kill_existing_process():
+    """Tắt tất cả các tiến trình toolfacebook.exe đang chạy"""
+    current_pid = os.getpid()
+    for process in psutil.process_iter(['pid', 'name']):
+        if process.name() == 'toolfacebook.exe' and process.pid != current_pid:
+            print(f"Đang tắt tiến trình cũ: {process.pid}")
+            try:
+                process.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
+    kill_existing_process()
     browser = None
     try:
         # Kiểm tra tham số đầu vào

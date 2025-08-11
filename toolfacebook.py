@@ -23,7 +23,7 @@ import csv
 import psutil
 import pandas as pd
 from datetime import timedelta
-
+from api import create_post, create_comment, create_reply_comment
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -199,7 +199,7 @@ def increment_friend_request_counter():
     """Tăng counter số lần kết bạn"""
     global friend_request_count
     friend_request_count += 1
-    log_message(f"📊 Đã kết bạn lần thứ {friend_request_count}/{MAX_FRIEND_REQUESTS_PER_DAY} trong ngày", logging.INFO)
+    log_message(f" Đã kết bạn lần thứ {friend_request_count}/{MAX_FRIEND_REQUESTS_PER_DAY} trong ngày", logging.INFO)
     return friend_request_count
 
 def can_send_friend_request():
@@ -251,6 +251,25 @@ def load_post_structure():
         log_message(f"Lỗi khi load post structure: {e}", logging.ERROR)
         return {"posts": {}}
 
+def load_user_accounts():
+    """Load thông tin user accounts từ file JSON"""
+    try:
+        if os.path.exists("user_accounts.json"):
+            with open("user_accounts.json", 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Nếu data là array, convert thành dict với key là user_id_QLC
+                if isinstance(data, list):
+                    result = {}
+                    for account in data:
+                        if isinstance(account, dict) and "user_id_QLC" in account:
+                            result[account["user_id_QLC"]] = account
+                    return result
+                return data
+        return {}
+    except Exception as e:
+        log_message(f"Lỗi khi load user accounts: {e}", logging.ERROR)
+        return {}
+
 def save_post_structure(data):
     """Lưu cấu trúc bài viết vào file JSON"""
     try:
@@ -260,7 +279,7 @@ def save_post_structure(data):
     except Exception as e:
         log_message(f"Lỗi khi lưu post structure: {e}", logging.ERROR)
 
-def add_post_to_structure(post_url, post_id=None):
+def add_post_to_structure(post_url, post_id=None, database_post_id=None):
     """Thêm post mới vào cấu trúc"""
     try:
         data = load_post_structure()
@@ -277,11 +296,14 @@ def add_post_to_structure(post_url, post_id=None):
             data["posts"][post_id] = {
                 "url": post_url,
                 "post_id": post_id,
+                "database_post_id": database_post_id,  # Lưu _id từ database để sử dụng sau
                 "comments": {},
                 "created_at": datetime.now().isoformat()
             }
             save_post_structure(data)
             log_message(f"Đã thêm post mới vào structure: {post_id}", logging.INFO)
+            if database_post_id:
+                log_message(f"Lưu database_post_id trong structure: {database_post_id}", logging.INFO)
         
         return post_id
     except Exception as e:
@@ -366,6 +388,83 @@ def get_post_structure_info(post_id):
         return data["posts"].get(post_id, None)
     except Exception as e:
         log_message(f"Lỗi khi lấy thông tin post structure: {e}", logging.ERROR)
+        return None
+
+def get_database_post_id(post_id):
+    """Lấy database_post_id từ post structure"""
+    try:
+        post_info = get_post_structure_info(post_id)
+        if post_info and "database_post_id" in post_info:
+            return post_info["database_post_id"]
+        return None
+    except Exception as e:
+        log_message(f"Lỗi khi lấy database_post_id: {e}", logging.ERROR)
+        return None
+
+def get_commenter_name(post_id, comment_id, reply_id=None):
+    """Lấy tên của người bình luận từ post_structure hoặc user_accounts
+    
+    Args:
+        post_id: ID của post
+        comment_id: ID của comment
+        reply_id: ID của reply (nếu có)
+    
+    Returns:
+        str: Tên người bình luận hoặc None nếu không tìm thấy
+    """
+    try:
+        # Load post structure
+        data = load_post_structure()
+        post_info = data["posts"].get(post_id, {})
+        
+        commenter_name = None
+        
+        # Kiểm tra trong reply trước nếu có reply_id
+        if reply_id and "comments" in post_info:
+            for comment_key, comment_data in post_info["comments"].items():
+                if isinstance(comment_data, dict) and "replies" in comment_data:
+                    for reply_key, reply_data in comment_data["replies"].items():
+                        if isinstance(reply_data, dict) and reply_key == reply_id:
+                            commenter_name = reply_data.get("commenter_name")
+                            if commenter_name:
+                                log_message(f"Tìm thấy commenter_name trong reply: {commenter_name}", logging.INFO)
+                                return commenter_name
+        
+        # Kiểm tra trong comments
+        if "comments" in post_info:
+            for comment_key, comment_data in post_info["comments"].items():
+                if isinstance(comment_data, dict) and comment_key == comment_id:
+                    commenter_name = comment_data.get("commenter_name")
+                    if commenter_name:
+                        log_message(f"Tìm thấy commenter_name trong comment: {commenter_name}", logging.INFO)
+                        return commenter_name
+        
+        # Nếu không tìm thấy trong post_structure, kiểm tra user_accounts
+        if not commenter_name:
+            user_accounts = load_user_accounts()
+            for account_key, account_info in user_accounts.items():
+                if isinstance(account_info, dict):
+                    # Tìm tên Facebook trong user_accounts
+                    if "nameFb" in account_info and account_info["nameFb"]:
+                        commenter_name = account_info["nameFb"]
+                        log_message(f"Tìm thấy commenter_name trong user_accounts (nameFb): {commenter_name}", logging.INFO)
+                        break
+                    elif "note" in account_info and account_info["note"]:
+                        commenter_name = account_info["note"]
+                        log_message(f"Tìm thấy commenter_name trong user_accounts (note): {commenter_name}", logging.INFO)
+                        break
+                    elif "facebook_name" in account_info and account_info["facebook_name"]:
+                        commenter_name = account_info["facebook_name"]
+                        log_message(f"Tìm thấy commenter_name trong user_accounts (facebook_name): {commenter_name}", logging.INFO)
+                        break
+        
+        if not commenter_name:
+            log_message(f"Không tìm thấy commenter_name cho post_id={post_id}, comment_id={comment_id}, reply_id={reply_id}", logging.WARNING)
+        
+        return commenter_name
+        
+    except Exception as e:
+        log_message(f"Lỗi khi lấy commenter name: {e}", logging.ERROR)
         return None
 
 # Hàm kết nối WebSocket để nhận nội dung mới với auto-reconnect
@@ -742,6 +841,7 @@ async def comment_on_post_url(browser):
         
         # Lấy dữ liệu bình luận từ WebSocket
         comment_data = pending_posts.pop(0)
+        userId = comment_data.get("authorId", "")
         
         # Kiểm tra type có phải là comment không
         if comment_data.get("type") != "comment":
@@ -967,70 +1067,95 @@ async def comment_on_post_url(browser):
                     comment_timestamps = browser.find_elements(By.XPATH, "//a[contains(@href, 'comment_id=')]")
                     
                     if comment_timestamps:
+                        log_message(f"Tìm thấy {len(comment_timestamps)} timestamp bình luận:", logging.INFO)
+                        
+                        # # In ra tất cả các link timestamp để debug
+                        # for i, timestamp in enumerate(comment_timestamps):
+                        #     try:
+                        #         href = timestamp.get_attribute("href")
+                        #         text = timestamp.get_attribute("textContent") or "No text"
+                        #         log_message(f"  Link {i+1}: {href} - Text: '{text.strip()}'", logging.INFO)
+                        #     except Exception as e:
+                        #         log_message(f"  Link {i+1}: Lỗi khi lấy thông tin - {e}", logging.WARNING)
+                        
                         # Lấy timestamp bình luận cuối cùng (mới nhất)
                         latest_comment_timestamp = comment_timestamps[-1]
-                        log_message(f"Tìm thấy {len(comment_timestamps)} timestamp bình luận, chọn cái cuối cùng", logging.INFO)
+                        log_message(f"Chọn timestamp cuối cùng (link {len(comment_timestamps)})", logging.INFO)
                         
-                        # Scroll timestamp vào view
-                        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_comment_timestamp)
-                        await asyncio.sleep(1)
+                        # Lấy href của timestamp cuối cùng (không cần click)
+                        timestamp_href = None
+                        try:
+                            timestamp_href = latest_comment_timestamp.get_attribute("href")
+                            log_message(f"Lấy href của timestamp cuối cùng: {timestamp_href}", logging.INFO)
+                        except Exception as href_error:
+                            log_message(f"Lỗi khi lấy href: {href_error}", logging.WARNING)
                         
-                        # Click vào timestamp để lấy URL có comment_id
-                        click_success = False
-                        for attempt in range(3):
-                            try:
-                                if attempt == 0:
-                                    latest_comment_timestamp.click()
-                                    log_message("Click timestamp bình luận thành công (click thông thường)", logging.INFO)
-                                    click_success = True
-                                    break
-                                elif attempt == 1:
-                                    browser.execute_script("arguments[0].click();", latest_comment_timestamp)
-                                    log_message("Click timestamp bình luận thành công (JavaScript)", logging.INFO)
-                                    click_success = True
-                                    break
-                                elif attempt == 2:
-                                    actions = ActionChains(browser)
-                                    actions.move_to_element(latest_comment_timestamp).click().perform()
-                                    log_message("Click timestamp bình luận thành công (ActionChains)", logging.INFO)
-                                    click_success = True
-                                    break
-                            except Exception as click_err:
-                                log_message(f" Lần thử {attempt + 1} click timestamp thất bại: {click_err}", logging.WARNING)
-                                await asyncio.sleep(1)
-                        
-                        if click_success:
-                            # Đợi trang load để lấy URL mới
-                            await asyncio.sleep(3)
-                            
-                            # Lấy URL hiện tại có chứa comment_id
-                            current_url = browser.current_url
-                            log_message(f"URL sau khi click timestamp: {current_url}", logging.INFO)
-                            
-                            # Trích xuất comment_id từ URL
-                            import re
-                            comment_id_match = re.search(r'comment_id=(\d+)', current_url)
+                        # Trích xuất comment_id trực tiếp từ href
+                        if timestamp_href:
+                            comment_id_match = re.search(r'comment_id=(\d+)', timestamp_href)
                             if comment_id_match:
                                 comment_id = comment_id_match.group(1)
-                                log_message(f"THÀNH CÔNG - Comment ID: {comment_id}", logging.INFO)
-                                
-                                # Lưu comment vào cấu trúc dữ liệu
-                                add_comment_to_structure(extracted_post_id, comment_id, comment_content)
+                                current_url = timestamp_href  # Sử dụng href làm URL
+                                log_message(f"THÀNH CÔNG - Comment ID từ href: {comment_id}", logging.INFO)
                             else:
-                                log_message(" Không tìm thấy comment_id trong URL", logging.WARNING)
-                                
-                                # Thử lấy từ href attribute thay vì current_url
-                                try:
-                                    href_url = latest_comment_timestamp.get_attribute("href")
-                                    if href_url:
-                                        comment_id_match = re.search(r'comment_id=(\d+)', href_url)
-                                        if comment_id_match:
-                                            comment_id = comment_id_match.group(1)
-                                            log_message(f"Lấy được Comment ID từ href: {comment_id}", logging.INFO)
-                                except Exception as href_err:
-                                    log_message(f" Không thể lấy href: {href_err}", logging.WARNING)
+                                log_message("Không tìm thấy comment_id trong href", logging.ERROR)
                         else:
-                            log_message(" Không thể click vào timestamp bình luận", logging.ERROR)
+                            log_message("Không lấy được href của timestamp", logging.ERROR)
+                        
+                        # Chỉ tiếp tục nếu đã có comment_id
+                        if comment_id:
+                            # Lưu comment vào cấu trúc dữ liệu
+                            add_comment_to_structure(extracted_post_id, comment_id, comment_content)
+                            
+                            # Lưu comment vào database thông qua API
+                            try:
+                                log_message("Đang lưu comment vào database...", logging.INFO)
+                                
+                                # Lấy database_post_id từ structure thay vì dùng extracted_post_id
+                                database_post_id = get_database_post_id(extracted_post_id)
+                                if not database_post_id:
+                                    log_message(f"Không tìm thấy database_post_id cho post_id: {extracted_post_id}", logging.WARNING)
+                                    database_post_id = extracted_post_id  # Fallback
+                                
+                                # Lấy commenter name từ post structure hoặc user accounts
+                                commenter_name = get_commenter_name(extracted_post_id, comment_id)
+                                if not commenter_name:
+                                    commenter_name = get_facebook_name()  # Fallback về tên Facebook hiện tại
+                                
+                                # Lấy link commenter từ post structure nếu có
+                                commenter_link = ""
+                                try:
+                                    post_info = get_post_structure_info(extracted_post_id)
+                                    if post_info and "comments" in post_info:
+                                        for comment_key, comment_data in post_info["comments"].items():
+                                            if isinstance(comment_data, dict) and comment_key == comment_id:
+                                                commenter_link = comment_data.get("commenter_link", "")
+                                                break
+                                except Exception as e:
+                                    log_message(f"Lỗi khi lấy commenter_link: {e}", logging.WARNING)
+                                
+                                payloadComment = {
+                                    "post_id": database_post_id,  # Sử dụng _id từ MongoDB
+                                    "facebookId": get_websocket_role(),
+                                    "userId": userId,
+                                    "userNameFacebook": commenter_name,  # Sử dụng tên từ post structure hoặc user accounts
+                                    "content": comment_content,
+                                    "postId": post_id_from_websocket,
+                                    "userLinkFb": commenter_link,  # Link profile người comment
+                                    "facebookCommentUrl": current_url,
+                                    "facebookCommentId": comment_id,
+                                    "createdAt": int(time.time()),  
+                                    "updatedAt": int(time.time())   
+                                }
+                                
+                                # Gọi API để lưu comment (async)
+                                api_response = await create_comment(payloadComment)
+                                log_message(f"Đã lưu comment vào database thành công: {api_response}", logging.INFO)
+                                
+                            except Exception as api_error:
+                                log_message(f"Lỗi khi lưu comment vào database: {api_error}", logging.ERROR)
+                        else:
+                            log_message("Không thể lấy được comment_id từ bất kỳ nguồn nào", logging.ERROR)
                     else:
                         log_message(" Không tìm thấy timestamp bình luận nào", logging.WARNING)
                         
@@ -1039,6 +1164,7 @@ async def comment_on_post_url(browser):
                 
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
+                    
                     comment_result = {
                         "type": "comment_result",   
                         "status": "success",
@@ -1135,6 +1261,16 @@ async def find_comment_container(browser, comment_id):
         
         # Tìm theo href chứa comment_id
         comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id}')]")
+        
+        log_message(f"Tìm thấy {len(comment_links)} link chứa comment_id={comment_id}:", logging.INFO)
+        for i, link in enumerate(comment_links):
+            try:
+                href = link.get_attribute("href")
+                text = link.get_attribute("textContent") or "No text"
+                log_message(f"  Container Link {i+1}: {href} - Text: '{text.strip()}'", logging.INFO)
+            except Exception as e:
+                log_message(f"  Container Link {i+1}: Lỗi khi lấy thông tin - {e}", logging.WARNING)
+        
         if comment_links:
             # Tìm container cha chứa link này
             for link in comment_links:
@@ -1177,6 +1313,7 @@ async def reply_to_comment(browser):
         # Lấy dữ liệu từ WebSocket
         reply_data = pending_posts[0]
         pending_posts.pop(0)
+        userId = reply_data.get("authorId", "")
         
         comment_url = reply_data.get("URL", "")
         reply_content = reply_data.get("content", "")
@@ -1215,6 +1352,16 @@ async def reply_to_comment(browser):
         try:
             # Tìm theo href chứa comment_id, sau đó mở rộng đến container cha có class x18xomjl xbcz3fp
             comment_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'comment_id={comment_id_from_websocket}')]")
+            
+            log_message(f"Tìm thấy {len(comment_links)} link chứa comment_id={comment_id_from_websocket}:", logging.INFO)
+            for i, link in enumerate(comment_links):
+                try:
+                    href = link.get_attribute("href")
+                    text = link.get_attribute("textContent") or "No text"
+                    log_message(f"  Comment Link {i+1}: {href} - Text: '{text.strip()}'", logging.INFO)
+                except Exception as e:
+                    log_message(f"  Comment Link {i+1}: Lỗi khi lấy thông tin - {e}", logging.WARNING)
+            
             if comment_links:
                 # Tìm container cha chứa link này
                 for link in comment_links:
@@ -1375,62 +1522,62 @@ async def reply_to_comment(browser):
                     reply_timestamps = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
 
                     if reply_timestamps:
-                        # Lấy timestamp reply mới nhất
+                        # Lấy timestamp reply mới nhất và lấy href trực tiếp
                         timestamp_element = reply_timestamps[-1]
-                        log_message(f"Tìm thấy reply timestamp: {timestamp_element.get_attribute('href')}", logging.INFO)
+                        reply_url = timestamp_element.get_attribute('href')
+                        log_message(f"Lấy link từ reply timestamp mới nhất: {reply_url}", logging.INFO)
+                        
+                        # Trích xuất reply_id từ href
+                        reply_id_patterns = [
+                            r'reply_comment_id=(\d+)',
+                            r'comment_id=(\d+)',
+                            r'cft\[0\]=(\d+)'
+                        ]
+                        
+                        for pattern in reply_id_patterns:
+                            try:
+                                reply_id_match = re.search(pattern, reply_url)
+                                if reply_id_match:
+                                    reply_id = reply_id_match.group(1)
+                                    log_message(f"Lấy được Reply ID từ href: {reply_id}", logging.INFO)
+                                    break
+                            except Exception as pattern_err:
+                                log_message(f" Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
                     else:
                         # Nếu không có reply_comment_id, tìm tất cả timestamp và lấy mới nhất
                         all_timestamps = comment_container.find_elements(By.XPATH, ".//a[contains(@href, 'comment_id')]")
                         
-                        # Debug: In ra tất cả timestamps
-                        log_message(f"DEBUG: Tìm thấy {len(all_timestamps)} timestamps chứa comment_id:", logging.INFO)
-                        for i, ts in enumerate(all_timestamps):
-                            href = ts.get_attribute('href')
-                            text = ts.text.strip() if ts.text else "No text"
-                            log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
+                        # # Debug: In ra tất cả timestamps
+                        # log_message(f"DEBUG: Tìm thấy {len(all_timestamps)} timestamps chứa comment_id:", logging.INFO)
+                        # for i, ts in enumerate(all_timestamps):
+                        #     href = ts.get_attribute('href')
+                        #     text = ts.text.strip() if ts.text else "No text"
+                        #     log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
                         
                         if all_timestamps:
                             timestamp_element = all_timestamps[-1]
-                            log_message(f"Tìm thấy timestamp (fallback): {timestamp_element.get_attribute('href')}", logging.INFO)
-                        else:
-                            log_message(" Không tìm thấy timestamp nào", logging.WARNING)
-                            return
-                    
-                    # Scroll vào view và click
-                    browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
-                    await asyncio.sleep(1)
-                    
-                    try:
-                        timestamp_element.click()
-                        await asyncio.sleep(2)
+                            reply_url = timestamp_element.get_attribute('href')
+                            log_message(f"Lấy link từ timestamp (fallback): {reply_url}", logging.INFO)
                             
-                        # Kiểm tra URL có thay đổi không
-                        current_url = browser.current_url
-                        if "comment_id" in current_url or "reply_comment_id" in current_url:
-                            log_message(f"Click timestamp thành công! URL mới: {current_url}", logging.INFO)
-                            reply_url = current_url
-                                
-                            # Trích xuất reply_id từ URL
+                            # Trích xuất reply_id từ href
                             reply_id_patterns = [
                                 r'reply_comment_id=(\d+)',
                                 r'comment_id=(\d+)',
                                 r'cft\[0\]=(\d+)'
                             ]
-                                
+                            
                             for pattern in reply_id_patterns:
                                 try:
                                     reply_id_match = re.search(pattern, reply_url)
                                     if reply_id_match:
                                         reply_id = reply_id_match.group(1)
-                                        log_message(f"Lấy được Reply ID: {reply_id}", logging.INFO)
+                                        log_message(f"Lấy được Reply ID từ href (fallback): {reply_id}", logging.INFO)
                                         break
                                 except Exception as pattern_err:
                                     log_message(f" Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
                         else:
-                            log_message(" URL không thay đổi sau khi click timestamp", logging.WARNING)
-                                
-                    except Exception as click_err:
-                        log_message(f" Lỗi khi click timestamp reply: {click_err}", logging.WARNING)
+                            log_message(" Không tìm thấy timestamp nào", logging.WARNING)
+                            return
                         
                 except Exception as reply_id_error:
                     log_message(f" Lỗi khi lấy reply_id: {reply_id_error}", logging.ERROR)
@@ -1442,6 +1589,58 @@ async def reply_to_comment(browser):
                     # Lưu với reply_id tạm thời nếu không lấy được reply_id từ URL
                     temp_reply_id = f"temp_reply_{int(time.time() * 1000)}"
                     add_reply_to_structure(extracted_post_id, comment_id_from_websocket, temp_reply_id, reply_content)
+                
+                # Lưu reply comment vào database trước khi gửi qua WebSocket
+                try:
+                    user_ids = get_id_tosend_websocket()
+                    user_name = get_facebook_name()
+                    
+                    # Lấy commenter name từ post structure hoặc user accounts
+                    commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_id)
+                    if not commenter_name:
+                        commenter_name = user_name  # Fallback về tên Facebook hiện tại
+                    
+                    # Lấy link commenter từ post structure nếu có
+                    commenter_link = ""
+                    try:
+                        post_info = get_post_structure_info(extracted_post_id)
+                        if post_info and "comments" in post_info:
+                            for comment_key, comment_data in post_info["comments"].items():
+                                if isinstance(comment_data, dict) and comment_key == comment_id_from_websocket:
+                                    if "replies" in comment_data and reply_id:
+                                        for reply_key, reply_data in comment_data["replies"].items():
+                                            if isinstance(reply_data, dict) and reply_key == reply_id:
+                                                commenter_link = reply_data.get("commenter_link", "")
+                                                break
+                                    break
+                    except Exception as e:
+                        log_message(f"Lỗi khi lấy reply commenter_link: {e}", logging.WARNING)
+                    
+                    payloadReplyComment = {
+                        "userId": userId,
+                        "userNameFacebook": user_name,  
+                        "content": reply_content,
+                        "userLinkFb": commenter_link,  # Link profile người reply
+                        "facebookReplyUrl": reply_url if reply_url else "",
+                        "id_facebookReply": reply_id if reply_id else f"temp_reply_{int(time.time() * 1000)}",
+                        "replyToAuthor": commenter_name,
+                        "createdAt": int(time.time()),  
+                        "updatedAt": int(time.time())  
+                    }
+                    
+                    # Gọi API để lưu reply comment (async)
+                    # Cần có comment_id_from_websocket làm facebook_comment_id
+                    if comment_id_from_websocket:
+                        response = await create_reply_comment(comment_id_from_websocket, payloadReplyComment)
+                        if response:
+                            log_message("Đã lưu reply comment vào database thành công!", logging.INFO)
+                        else:
+                            log_message("Lỗi khi lưu reply comment vào database", logging.WARNING)
+                    else:
+                        log_message("Không có comment_id_from_websocket để gọi API reply comment", logging.WARNING)
+                        
+                except Exception as db_error:
+                    log_message(f"Lỗi khi lưu reply comment vào database: {db_error}", logging.ERROR)
                 
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
@@ -1602,6 +1801,16 @@ async def reply_to_reply_comment(browser):
         try:
             # Tìm theo href chứa reply_comment_id và mở rộng đến container có class cụ thể
             reply_links = browser.find_elements(By.XPATH, f"//a[contains(@href, 'reply_comment_id={reply_id_from_websocket}')]")
+            
+            log_message(f"Tìm thấy {len(reply_links)} link chứa reply_comment_id={reply_id_from_websocket}:", logging.INFO)
+            for i, link in enumerate(reply_links):
+                try:
+                    href = link.get_attribute("href")
+                    text = link.get_attribute("textContent") or "No text"
+                    log_message(f"  Reply Link {i+1}: {href} - Text: '{text.strip()}'", logging.INFO)
+                except Exception as e:
+                    log_message(f"  Reply Link {i+1}: Lỗi khi lấy thông tin - {e}", logging.WARNING)
+            
             if reply_links:
                 # Tìm container cha có class 'x6s0dn4 x3nfvp2'
                 for link in reply_links:
@@ -1781,62 +1990,62 @@ async def reply_to_reply_comment(browser):
                     reply_timestamps = comment_container_for_timestamp.find_elements(By.XPATH, ".//a[contains(@href, 'reply_comment_id')]")
 
                     if reply_timestamps:
-                        # Lấy timestamp reply mới nhất
+                        # Lấy timestamp reply mới nhất và lấy href trực tiếp
                         timestamp_element = reply_timestamps[-1]
-                        log_message(f"Tìm thấy reply to reply timestamp: {timestamp_element.get_attribute('href')}", logging.INFO)
+                        reply_to_reply_url = timestamp_element.get_attribute('href')
+                        log_message(f"Lấy link từ reply to reply timestamp mới nhất: {reply_to_reply_url}", logging.INFO)
+                        
+                        # Trích xuất reply_to_reply_id từ href
+                        reply_id_patterns = [
+                            r'reply_comment_id=(\d+)',
+                            r'comment_id=(\d+)',
+                            r'cft\[0\]=(\d+)'
+                        ]
+                        
+                        for pattern in reply_id_patterns:
+                            try:
+                                reply_id_match = re.search(pattern, reply_to_reply_url)
+                                if reply_id_match:
+                                    reply_to_reply_id = reply_id_match.group(1)
+                                    log_message(f"Lấy được Reply to Reply ID từ href: {reply_to_reply_id}", logging.INFO)
+                                    break
+                            except Exception as pattern_err:
+                                log_message(f" Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
                     else:
                         # Nếu không có reply_comment_id, tìm tất cả timestamp và lấy mới nhất
                         all_timestamps = comment_container_for_timestamp.find_elements(By.XPATH, ".//a[contains(@href, 'comment_id')]")
                         
-                        # Debug: In ra tất cả timestamps
-                        log_message(f"DEBUG: Tìm thấy {len(all_timestamps)} timestamps chứa comment_id:", logging.INFO)
-                        for i, ts in enumerate(all_timestamps):
-                            href = ts.get_attribute('href')
-                            text = ts.text.strip() if ts.text else "No text"
-                            log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
+                        # # Debug: In ra tất cả timestamps
+                        # log_message(f"DEBUG: Tìm thấy {len(all_timestamps)} timestamps chứa comment_id:", logging.INFO)
+                        # for i, ts in enumerate(all_timestamps):
+                        #     href = ts.get_attribute('href')
+                        #     text = ts.text.strip() if ts.text else "No text"
+                        #     log_message(f"  {i+1}. Timestamp: {href} | Text: '{text}'", logging.INFO)
                         
                         if all_timestamps:
                             timestamp_element = all_timestamps[-1]
-                            log_message(f"Tìm thấy timestamp (fallback): {timestamp_element.get_attribute('href')}", logging.INFO)
-                        else:
-                            log_message(" Không tìm thấy timestamp nào", logging.WARNING)
-                            return
-                    
-                    # Scroll vào view và click
-                    browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", timestamp_element)
-                    await asyncio.sleep(1)
-                    
-                    try:
-                        timestamp_element.click()
-                        await asyncio.sleep(2)
+                            reply_to_reply_url = timestamp_element.get_attribute('href')
+                            log_message(f"Lấy link từ timestamp (fallback): {reply_to_reply_url}", logging.INFO)
                             
-                        # Kiểm tra URL có thay đổi không
-                        current_url = browser.current_url
-                        if "comment_id" in current_url or "reply_comment_id" in current_url:
-                            log_message(f"Click timestamp thành công! URL mới: {current_url}", logging.INFO)
-                            reply_to_reply_url = current_url
-                                
-                            # Trích xuất reply_to_reply_id từ URL
+                            # Trích xuất reply_to_reply_id từ href
                             reply_id_patterns = [
                                 r'reply_comment_id=(\d+)',
                                 r'comment_id=(\d+)',
                                 r'cft\[0\]=(\d+)'
                             ]
-                                
+                            
                             for pattern in reply_id_patterns:
                                 try:
                                     reply_id_match = re.search(pattern, reply_to_reply_url)
                                     if reply_id_match:
                                         reply_to_reply_id = reply_id_match.group(1)
-                                        log_message(f"Lấy được Reply to Reply ID: {reply_to_reply_id}", logging.INFO)
+                                        log_message(f"Lấy được Reply to Reply ID từ href (fallback): {reply_to_reply_id}", logging.INFO)
                                         break
                                 except Exception as pattern_err:
                                     log_message(f" Lỗi pattern {pattern}: {pattern_err}", logging.WARNING)
                         else:
-                            log_message(" URL không thay đổi sau khi click timestamp", logging.WARNING)
-                                
-                    except Exception as click_err:
-                        log_message(f" Lỗi khi click timestamp reply to reply: {click_err}", logging.WARNING)
+                            log_message(" Không tìm thấy timestamp nào", logging.WARNING)
+                            return
                         
                 except Exception as reply_id_error:
                     log_message(f"Lỗi khi lấy reply to reply id: {reply_id_error}", logging.ERROR)
@@ -1848,6 +2057,58 @@ async def reply_to_reply_comment(browser):
                     # Lưu với reply_id tạm thời nếu không lấy được reply_to_reply_id từ URL
                     temp_reply_id = f"temp_reply_to_reply_{int(time.time() * 1000)}"
                     add_reply_to_structure(extracted_post_id, comment_id_from_websocket, temp_reply_id, reply_content)
+                
+                # Lưu reply to reply comment vào database trước khi gửi qua WebSocket
+                try:
+                    user_ids = get_id_tosend_websocket()
+                    user_name = get_facebook_name()
+                    userId = reply_data.get("authorId", "")
+                    
+                    # Lấy commenter name từ post structure hoặc user accounts
+                    commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_to_reply_id)
+                    if not commenter_name:
+                        commenter_name = user_name  # Fallback về tên Facebook hiện tại
+                    
+                    # Lấy link commenter từ post structure nếu có
+                    commenter_link = ""
+                    try:
+                        post_info = get_post_structure_info(extracted_post_id)
+                        if post_info and "comments" in post_info:
+                            for comment_key, comment_data in post_info["comments"].items():
+                                if isinstance(comment_data, dict) and comment_key == comment_id_from_websocket:
+                                    if "replies" in comment_data and reply_to_reply_id:
+                                        for reply_key, reply_data_struct in comment_data["replies"].items():
+                                            if isinstance(reply_data_struct, dict) and reply_key == reply_to_reply_id:
+                                                commenter_link = reply_data_struct.get("commenter_link", "")
+                                                break
+                                    break
+                    except Exception as e:
+                        log_message(f"Lỗi khi lấy reply to reply commenter_link: {e}", logging.WARNING)
+                    
+                    payloadReplyComment = {
+                        "userId": userId,
+                        "userNameFacebook": user_name,  
+                        "content": reply_content,
+                        "userLinkFb": commenter_link,  # Link profile người reply
+                        "facebookReplyUrl": reply_to_reply_url if reply_to_reply_url else "",
+                        "id_facebookReply": reply_to_reply_id if reply_to_reply_id else f"temp_reply_{int(time.time() * 1000)}",
+                        "replyToAuthor": commenter_name,
+                        "createdAt": int(time.time()),  
+                        "updatedAt": int(time.time())  
+                    }
+                    
+                    # Gọi API để lưu reply comment (async) - sử dụng comment_id_from_websocket làm facebook_comment_id
+                    if comment_id_from_websocket:
+                        response = await create_reply_comment(comment_id_from_websocket, payloadReplyComment)
+                        if response:
+                            log_message("Đã lưu reply to reply comment vào database thành công!", logging.INFO)
+                        else:
+                            log_message("Lỗi khi lưu reply to reply comment vào database", logging.WARNING)
+                    else:
+                        log_message("Không có comment_id_from_websocket để gọi API reply to reply comment", logging.WARNING)
+                        
+                except Exception as db_error:
+                    log_message(f"Lỗi khi lưu reply to reply comment vào database: {db_error}", logging.ERROR)
                 
                 # Gửi thông báo thành công về bên A qua WebSocket
                 try:
@@ -2071,7 +2332,9 @@ async def post_news_feed(browser):
         # Lấy nội dung từ WebSocket
         post_data = pending_posts.pop(0)
         content = post_data.get("content", "")
+        userId = post_data.get("authorId", "")
         downloaded_images = post_data.get("downloaded_images", [])
+        original_attachments = post_data.get("attachments", [])  # Lấy attachments gốc từ WebSocket
         post_id_from_websocket = post_data.get("postId", None)  # Lưu postId từ WebSocket
         
         if not content:
@@ -2085,7 +2348,12 @@ async def post_news_feed(browser):
         if post_id_from_websocket:
             log_message(f"PostId từ WebSocket: {post_id_from_websocket}", logging.INFO)
         if downloaded_images:
-            log_message(f"Sẽ đính kèm {len(downloaded_images)} ảnh", logging.INFO)
+            log_message(f"Sẽ đính kèm {len(downloaded_images)} ảnh (đã tải về)", logging.INFO)
+        if original_attachments:
+            log_message(f"Attachments gốc từ WebSocket: {len(original_attachments)} files", logging.INFO)
+            for idx, attachment in enumerate(original_attachments):
+                if attachment.get("type", "").startswith("image"):
+                    log_message(f"  - Ảnh {idx + 1}: {attachment.get('name', 'N/A')} -> URL: {attachment.get('url', 'N/A')}", logging.INFO)
 
         await asyncio.sleep(random.uniform(5, 8))
         actions = ActionChains(browser)
@@ -2260,10 +2528,6 @@ async def post_news_feed(browser):
         
         log_message("Đã tìm thấy nút Đăng", logging.INFO)
         
-        # Chờ thêm 2s để UI hoàn toàn ổn định trước khi click
-        await asyncio.sleep(2)
-        log_message("Đợi 2s để UI ổn định trước khi click Đăng", logging.INFO)
-        
         # Scroll nút đăng vào view để đảm bảo có thể click
         browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", post_new_button)
         await asyncio.sleep(1)
@@ -2300,7 +2564,7 @@ async def post_news_feed(browser):
             raise Exception("Không thể click nút Đăng sau 3 lần thử")
         
         # Đợi bài viết được đăng thành công và lấy link bài viết
-        await asyncio.sleep(random.uniform(3, 5))
+        await asyncio.sleep(random.uniform(4, 6))
         
         try:
             post_url = None
@@ -2386,26 +2650,7 @@ async def post_news_feed(browser):
                             actions.move_to_element(time_link).click().perform()
                             click_success = True
                             break
-                            
-                        elif attempt == 3:
-                            # Phương pháp 4: Click with offset
-                            log_message(f"Lần thử {attempt + 1}: Click with offset", logging.INFO)
-                            actions = ActionChains(browser)
-                            actions.move_to_element_with_offset(time_link, 5, 5).click().perform()
-                            click_success = True
-                            break
-                            
-                        elif attempt == 4:
-                            # Phương pháp 5: Force click via JavaScript với event dispatch
-                            log_message(f"� Lần thử {attempt + 1}: Force JavaScript click with events", logging.INFO)
-                            browser.execute_script("""
-                                arguments[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-                                arguments[0].dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                                arguments[0].dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                            """, time_link)
-                            click_success = True
-                            break
-                            
+                        
                     except Exception as click_error:
                         log_message(f" Lần thử {attempt + 1} thất bại: {click_error}", logging.WARNING)
                         await asyncio.sleep(1)  # Chờ 1s trước khi thử lại
@@ -2458,11 +2703,62 @@ async def post_news_feed(browser):
             if post_url:
                 log_message(f"THÀNH CÔNG - Post URL: {post_url}", logging.INFO)
                 
-                # Lưu post vào cấu trúc dữ liệu ngay sau khi lấy được URL
+                # Lưu post vào database thông qua API TRƯỚC
                 try:
-                    saved_post_id = add_post_to_structure(post_url, post_id_from_websocket)
+                    log_message("Đang lưu post vào database...", logging.INFO)
+                    
+                    # Lấy current account để có thông tin user
+                    current_account = get_current_account()
+                    user_id = current_account.get("user_id_QLC", "") if current_account else ""
+                    
+    
+                    
+                    payloadPost = {
+                        "facebookId": get_websocket_role(),
+                        "userId": userId,
+                        "userNameFacebook": get_facebook_name(),
+                        "content": content,
+                        "facebookPostId": post_id_from_websocket,
+                        "facebookPostUrl": post_url,
+                        "createdAt": int(time.time()), 
+                        "updatedAt": int(time.time()),  
+                        "attachments": [
+                            {
+                                "name": attachment.get("name", f"image_{idx}.png"),
+                                "type": attachment.get("type", "image"),
+                                "url": attachment.get("url", "")  # Sử dụng link ảnh từ WebSocket
+                            } for idx, attachment in enumerate(original_attachments) if attachment.get("type", "").startswith("image")
+                        ] if original_attachments else []
+                    }
+                    
+                    # Gọi API để lưu post (async)
+                    api_response = await create_post(payloadPost)
+                    log_message(f"Đã lưu post vào database thành công: {api_response}", logging.INFO)
+                    
+                    # Log thông tin attachments đã gửi
+                    if original_attachments:
+                        log_message(f"📎 Đã lưu {len([att for att in original_attachments if att.get('type', '').startswith('image')])} ảnh với link gốc từ WebSocket", logging.INFO)
+                    
+                    # Lưu _id từ response để sử dụng sau này
+                    database_post_id = None
+                    if api_response and isinstance(api_response, dict):
+                        database_post_id = api_response.get('_id') or api_response.get('id')
+                        if database_post_id:
+                            log_message(f"Lưu database_post_id: {database_post_id}", logging.INFO)
+                        else:
+                            log_message("Không tìm thấy _id trong API response", logging.WARNING)
+                    
+                except Exception as api_error:
+                    log_message(f"Lỗi khi lưu post vào database: {api_error}", logging.ERROR)
+                    database_post_id = None
+                
+                # SAU KHI có database_post_id, mới lưu post vào cấu trúc dữ liệu
+                try:
+                    saved_post_id = add_post_to_structure(post_url, post_id_from_websocket, database_post_id)
                     if saved_post_id:
                         log_message(f"Đã lưu post vào cấu trúc dữ liệu với ID: {saved_post_id}", logging.INFO)
+                        if database_post_id:
+                            log_message(f"Cấu trúc đã có database_post_id: {database_post_id}", logging.INFO)
                     else:
                         log_message("Không thể lưu post vào cấu trúc dữ liệu", logging.WARNING)
                 except Exception as save_error:
@@ -3090,7 +3386,7 @@ class FacebookCommentScraper:
         """Cuộn trang và tải thêm bình luận"""
         scrolls = 0
         no_new_content_count = 0
-        max_no_new_content = 3  # Tăng từ 3 lên 5 như trong comment_crawler_TCN
+        max_no_new_content = 3 
 
         try:
             body = self.driver.find_element(By.TAG_NAME, 'body')
@@ -3237,7 +3533,7 @@ class FacebookCommentScraper:
                 except:
                     continue
             
-            log_message(f"Tìm thấy {len(valid_comments)} comment hợp lệ", logging.INFO)
+            log_message(f"📊 Tổng cộng tìm thấy {len(valid_comments)} comment hợp lệ, bắt đầu xử lý và lưu database...", logging.INFO)
             
             # Trích xuất dữ liệu từ mỗi comment
             for i, comment in enumerate(valid_comments):
@@ -3245,6 +3541,7 @@ class FacebookCommentScraper:
                     comment_data = self.extract_comment_data(comment, i, self.driver.current_url)
                     if comment_data:
                         comments_data.append(comment_data)
+                        
                         if (i + 1) % 10 == 0:
                             log_message(f"Đã xử lý {i + 1} comment", logging.INFO)
                 except Exception as e:
@@ -3564,7 +3861,7 @@ class FacebookCommentScraper:
             return None
 
     def scrape_post_comments(self, post_url, cookies_file=None, output_file=None):
-        """Phương thức chính để crawl bình luận từ một bài đăng bằng cookie (giống comment_crawler_TCN.py)"""
+        """Phương thức chính để crawl bình luận từ một bài đăng bằng cookie"""
         try:
             if cookies_file and not self.load_cookies(cookies_file):
                 log_message("Đăng nhập bằng cookie thất bại. Vui lòng kiểm tra lại file cookie.", logging.ERROR)
@@ -3659,7 +3956,7 @@ async def crawl_comments_and_update_structure(browser, post_url=None, target_pos
         comments = scraper.extract_comments_from_current_page()
         
         if comments:
-            log_message(f"📊 Cào được {len(comments)} comment", logging.INFO)
+            log_message(f" Cào được {len(comments)} comment", logging.INFO)
             
             # Phân loại comment và reply
             root_comments = []  # Comments gốc (không có reply_comment_id)
@@ -3672,10 +3969,10 @@ async def crawl_comments_and_update_structure(browser, post_url=None, target_pos
                 else:
                     root_comments.append(comment_data)
             
-            log_message(f"📊 Phân loại: {len(root_comments)} comment gốc, {len(reply_comments)} reply", logging.INFO)
+            log_message(f" Phân loại: {len(root_comments)} comment gốc, {len(reply_comments)} reply", logging.INFO)
             
             # Sử dụng hàm update_post_structure_with_new_comments đã cải tiến
-            new_comments_added, new_replies_added = update_post_structure_with_new_comments(post_id, comments)
+            new_comments_added, new_replies_added = await update_post_structure_with_new_comments(post_id, comments)
             
             # Thông báo kết quả
             if new_comments_added > 0 or new_replies_added > 0:
@@ -3719,7 +4016,7 @@ async def crawl_comments_and_update_structure(browser, post_url=None, target_pos
         traceback.print_exc()
 
 # Hàm cập nhật comment/reply mới vào post structure
-def update_post_structure_with_new_comments(post_id, scraped_comments):
+async def update_post_structure_with_new_comments(post_id, scraped_comments):
     """Cập nhật những comment/reply mới vào cấu trúc post hiện có"""
     try:
         data = load_post_structure()
@@ -3752,7 +4049,7 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                 comments.append(c)
                 log_message(f" Phân loại là COMMENT: {comment_id}", logging.INFO)
         
-        log_message(f"📊 Phân loại: {len(comments)} comment gốc, {len(replies)} reply", logging.INFO)
+        log_message(f" Phân loại: {len(comments)} comment gốc, {len(replies)} reply", logging.INFO)
         
         # **BƯỚC 1: Xử lý comment gốc trước để đảm bảo parent tồn tại**
         new_comments_to_send = []  # Danh sách comment mới để gửi qua WebSocket
@@ -3771,9 +4068,9 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                 data["posts"][post_id]["comments"][comment_id] = {
                     "comment_fb_id": comment_id,
                     "content": comment_text,
-                    "commenter_name": comment.get('commentor', ''),  # Sửa từ 'commenter_name' thành 'commentor'
-                    "commenter_link": comment.get('link_commenter', ''),  # Sửa từ 'commenter_link' thành 'link_commenter'
-                    "comment_date": comment.get('date_comment', ''),  # Sửa từ 'comment_date' thành 'date_comment'
+                    "commenter_name": comment.get('commentor', ''), 
+                    "commenter_link": comment.get('link_commenter', ''), 
+                    "comment_date": comment.get('date_comment', ''),  
                     "link_comment": comment.get('link_comment', ''),
                     "replies": {},
                     "created_at": datetime.now().isoformat(),
@@ -3794,6 +4091,41 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                     'linkUserComment': comment.get('link_commenter', ''),  # Link profile người comment
                     'timestamp': datetime.now().isoformat()
                 })
+                
+                # LƯU COMMENT CÀO ĐƯỢC VÀO DATABASE
+                try:
+                    # Lấy database_post_id từ structure
+                    database_post_id = get_database_post_id(post_id)
+                    if not database_post_id:
+                        log_message(f"Không tìm thấy database_post_id cho post_id: {post_id}", logging.WARNING)
+                        database_post_id = post_id  # Fallback
+                    
+                    payloadScrapedComment = {
+                        "post_id": database_post_id,  # Sử dụng _id từ MongoDB
+                        "facebookId": get_websocket_role(),
+                        "userId": get_id_tosend_websocket(),
+                        "userNameFacebook": comment.get('commentor', 'Anonymous'),
+                        "content": comment_text,
+                        "postId": post_id,  # Facebook post ID
+                        "userLinkFb": comment.get('link_commenter', ''),  # Link profile người comment
+                        "facebookCommentUrl": comment.get('link_comment', ''),
+                        "facebookCommentId": comment_id,
+                        "createdAt": int(time.time()),
+                        "updatedAt": int(time.time()),
+                        "scraped": True,  # Đánh dấu là comment cào được
+                        "scrapedAt": datetime.now().isoformat(),
+                        "originalDate": comment.get('date_comment', '')
+                    }
+                    
+                    # Gọi API để lưu comment cào được (async)
+                    response = await create_comment(payloadScrapedComment)
+                    if response:
+                        log_message(f"✅ Đã lưu scraped comment {comment_id} vào database thành công!", logging.INFO)
+                    else:
+                        log_message(f"⚠️ Lỗi khi lưu scraped comment {comment_id} vào database", logging.WARNING)
+                        
+                except Exception as db_error:
+                    log_message(f"❌ Lỗi database khi lưu scraped comment {comment_id}: {db_error}", logging.ERROR)
                 
             else:
                 # Kiểm tra nếu comment hiện tại là placeholder thì cập nhật
@@ -3873,6 +4205,38 @@ def update_post_structure_with_new_comments(post_id, scraped_comments):
                     'linkUserReply': reply.get('link_commenter', ''),  # Link profile người reply
                     'timestamp': datetime.now().isoformat()
                 })
+                
+                # LƯU REPLY CÀO ĐƯỢC VÀO DATABASE
+                try:
+                    # Lấy tên người chủ comment, fallback về tên Facebook của account hiện tại nếu không có
+                    reply_to_author = data["posts"][post_id]["comments"][parent_comment_id].get("commenter_name", "")
+                    if not reply_to_author:
+                        reply_to_author = get_facebook_name()
+                    
+                    payloadScrapedReply = {
+                        "userId": get_id_tosend_websocket(),
+                        "userNameFacebook": reply.get('commentor', 'Anonymous'),
+                        "content": reply_text,
+                        "userLinkFb": reply.get('link_commenter', ''),  # Link profile người reply
+                        "facebookReplyUrl": reply.get('link_comment', ''),
+                        "id_facebookReply": reply_id,
+                        "replyToAuthor": reply_to_author,
+                        "createdAt": int(time.time()),
+                        "updatedAt": int(time.time()),
+                        "scraped": True,  # Đánh dấu là reply cào được
+                        "scrapedAt": datetime.now().isoformat(),
+                        "originalDate": reply.get('date_comment', '')
+                    }
+                    
+                    # Gọi API để lưu reply cào được (async) - sử dụng parent_comment_id làm facebook_comment_id
+                    response = await create_reply_comment(parent_comment_id, payloadScrapedReply)
+                    if response:
+                        log_message(f"✅ Đã lưu scraped reply {reply_id} vào database thành công!", logging.INFO)
+                    else:
+                        log_message(f"⚠️ Lỗi khi lưu scraped reply {reply_id} vào database", logging.WARNING)
+                        
+                except Exception as db_error:
+                    log_message(f"❌ Lỗi database khi lưu scraped reply {reply_id}: {db_error}", logging.ERROR)
                 
             else:
                 log_message(f"ℹ️ Reply đã tồn tại: {reply_id} trong comment {parent_comment_id}", logging.INFO)

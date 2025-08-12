@@ -46,7 +46,7 @@ WEBSOCKET_URL = "ws://123.24.206.25:4000"
 POST_STRUCTURE_FILE = "post_structure.json"
 
 # Cấu hình cào comment
-MAX_POSTS_TO_CRAWL = 20  # Số lượng bài mới nhất sẽ được cào comment
+MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
 
 # Queue để lưu nội dung từ WebSocket
 pending_posts = []
@@ -61,6 +61,10 @@ current_account_data = None
 friend_request_count = 0
 friend_request_date = None
 MAX_FRIEND_REQUESTS_PER_DAY = 30
+
+# Biến global để theo dõi thời gian cào comment tự động
+last_auto_crawl_time = None
+AUTO_CRAWL_INTERVAL = 8000 
 
 COMMENTS = [
     "Danh sách ứng viên trên Timviec365 thật sự rất chất lượng!",
@@ -4430,63 +4434,6 @@ async def manual_crawl_current_page(browser):
         await send_crawl_status_to_websocket('error', error_message)
         log_message(f" {error_message}", logging.ERROR)
 
-# Hàm cào data thông minh sau mỗi hoạt động
-async def smart_data_crawl_after_activity(browser, activity_name):
-    """Cào data một cách thông minh sau mỗi hoạt động"""
-    try:
-        current_url = browser.current_url
-        
-        # Kiểm tra xem có phải đang ở trang Facebook post không
-        if not current_url or "facebook.com" not in current_url:
-            log_message(f"Không ở trang Facebook, bỏ qua cào data sau {activity_name}", logging.INFO)
-            return
-        
-        # Kiểm tra xem có phải trang post có comment không
-        is_post_page = any(pattern in current_url for pattern in [
-            "/posts/", "/photo", "/video", "/story", "/permalink", "story_fbid="
-        ])
-        
-        if not is_post_page:
-            log_message(f"Trang hiện tại không phải post page, bỏ qua cào data sau {activity_name}", logging.INFO)
-            return
-        
-        log_message(f"Phát hiện trang post, tiến hành cào data sau {activity_name}", logging.INFO)
-        
-        # Kiểm tra xem có comment box không
-        try:
-            comment_indicators = browser.find_elements(By.CSS_SELECTOR, 
-                "div[role='article'], [aria-label*='bình luận'], [aria-label*='comment']")
-            
-            if not comment_indicators:
-                log_message(f"Không tìm thấy comment box, bỏ qua cào data sau {activity_name}", logging.INFO)
-                return
-                
-        except Exception:
-            log_message(f"Lỗi khi kiểm tra comment box, bỏ qua cào data sau {activity_name}", logging.WARNING)
-            return
-        
-        # Thực hiện cào comment
-        log_message(f"Bắt đầu cào data sau hoạt động: {activity_name}", logging.INFO)
-        await send_crawl_status_to_websocket('started', f'Cào data sau {activity_name}: {current_url}', 1, 0)
-        
-        await crawl_comments_and_update_structure(browser)
-        
-        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào data sau {activity_name}', 1, 1)
-        log_message(f"Hoàn thành cào data sau hoạt động: {activity_name}", logging.INFO)
-        
-    except Exception as e:
-        error_message = f"Lỗi khi cào data sau {activity_name}: {e}"
-        await send_crawl_status_to_websocket('error', error_message)
-        log_message(f" {error_message}", logging.ERROR)
-        
-        # **GỬI THÔNG BÁO HOÀN THÀNH CÀO COMMENT THỦ CÔNG**
-        await send_crawl_status_to_websocket('finished', f'Hoàn thành cào comment thủ công: {current_url}', 1, 1)
-        
-    except Exception as e:
-        # **GỬI THÔNG BÁO LỖI CÀO COMMENT THỦ CÔNG**
-        error_message = f"Lỗi trong manual_crawl_current_page: {e}"
-        await send_crawl_status_to_websocket('error', error_message)
-        log_message(f" {error_message}", logging.ERROR)
 
 # Hàm gửi thông báo trạng thái cào comment qua WebSocket
 async def send_crawl_status_to_websocket(status, message="", post_count=0, current_post=0):
@@ -4517,9 +4464,7 @@ async def send_crawl_status_to_websocket(status, message="", post_count=0, curre
     except Exception as e:
         log_message(f" Lỗi trong send_crawl_status_to_websocket: {e}", logging.ERROR)
 
-# Biến global để theo dõi thời gian cào comment tự động
-last_auto_crawl_time = None
-AUTO_CRAWL_INTERVAL = 8000 
+
 
 # Hàm kiểm tra và thực hiện cào comment tự động theo chu kỳ
 async def check_and_run_auto_crawl(browser):
@@ -4562,6 +4507,8 @@ async def check_and_run_auto_crawl(browser):
         
     except Exception as e:
         log_message(f" Lỗi trong hàm check_and_run_auto_crawl: {e}", logging.ERROR)
+
+
 def kill_existing_process():
     """Tắt tất cả các tiến trình toolfacebook.exe đang chạy"""
     current_pid = os.getpid()
@@ -4714,9 +4661,6 @@ async def main(client_user_id_chat):
                     elif pending_posts[0].get("type") == "reply_reply_comment":
                         log_message("Có yêu cầu trả lời reply comment từ WebSocket, dừng TẤT CẢ hoạt động và trả lời reply ngay lập tức", logging.INFO)
                         await reply_to_reply_comment(browser)
-                    elif pending_posts[0].get("type") == "crawl_comments":
-                        log_message("Có yêu cầu cào comment từ WebSocket, dừng TẤT CẢ hoạt động và cào comment ngay lập tức", logging.INFO)
-                        await crawl_comments_from_websocket(browser)
                     elif pending_posts[0].get("type") == "crawl_comment_by_CRM":
                         log_message("Có yêu cầu cào comment từ CRM, dừng TẤT CẢ hoạt động và cào comment tự động từ bài mới nhất", logging.INFO)
                         await crawl_comments_by_crm_request(browser)
@@ -4736,7 +4680,7 @@ async def main(client_user_id_chat):
                     
                     # Cào data thông minh sau khi lướt Facebook
                     if not stop_browsing:
-                        await smart_data_crawl_after_activity(browser, "lướt Facebook")
+                        await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4749,7 +4693,7 @@ async def main(client_user_id_chat):
                     
                     # Cào data thông minh sau khi xem video
                     if not stop_browsing:
-                        await smart_data_crawl_after_activity(browser, "xem video")
+                        await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4763,7 +4707,7 @@ async def main(client_user_id_chat):
                     
                     # Cào data thông minh sau khi đăng bài
                     if not stop_browsing:
-                        await smart_data_crawl_after_activity(browser, "đăng bài")
+                        await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4777,7 +4721,7 @@ async def main(client_user_id_chat):
                     
                     # Cào data thông minh sau khi nhắn tin bạn bè  
                     if not stop_browsing:
-                        await smart_data_crawl_after_activity(browser, "nhắn tin bạn bè")
+                        await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
@@ -4790,11 +4734,11 @@ async def main(client_user_id_chat):
                     status = get_friend_request_status()
                     if status['remaining'] > 0:
                         await add_friend(browser)
-                        await asyncio.sleep(random.uniform(200, 300))
+                        await asyncio.sleep(random.uniform(2, 3))
                         
                         # Cào data thông minh sau khi kết bạn
                         if not stop_browsing:
-                            await smart_data_crawl_after_activity(browser, "kết bạn")
+                            await check_and_run_auto_crawl(browser)
                     else:
                         log_message(f"⏸️ Bỏ qua kết bạn - đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY}/ngày", logging.INFO)
                         await asyncio.sleep(random.uniform(60, 120))  # Nghỉ ngắn thay vì kết bạn

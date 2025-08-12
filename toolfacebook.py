@@ -4595,7 +4595,7 @@ async def main(client_user_id_chat):
         chrome_options = Options()
         # prefs = {"profile.managed_default_content_settings.images": 2}
         # chrome_options.add_experimental_option("prefs", prefs)
-        # chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
 

@@ -39,9 +39,9 @@ from selenium.common.exceptions import TimeoutException
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
 # Constants
-COOKIE_FILE = "fb_cookies.json"
-# WEBSOCKET_URL = "ws://123.24.206.25:4000"
-WEBSOCKET_URL = "ws://localhost:4000"
+COOKIE_FILE = "fb_cookies.json" 
+WEBSOCKET_URL = "ws://123.24.206.25:4000"
+# WEBSOCKET_URL = "ws://localhost:4000"
 # WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
 POST_STRUCTURE_FILE = "post_structure.json"
 

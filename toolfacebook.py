@@ -20,6 +20,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
+import requests
+
 # Constants
 COOKIE_FILE = "fb_cookies.json"
 COMMENTS = [
@@ -140,6 +142,16 @@ CONTENT_POST = [
     "Công việc mơ ước của bạn không còn xa! Hãy nhanh chóng ứng tuyển vào vị trí mà chúng tôi đang tìm kiếm để phát triển bản thân trong môi trường năng động và thân thiện. Đừng bỏ lỡ cơ hội này, hãy ứng tuyển ngay hôm nay!",
     "Thời tiết hôm này thật thoải mái và dễ chịu, tâm trạng mình cũng rất tốt, cuối cùng mình cũng đạt được mục tiêu của mình. Tiếp tục cố gắng cho những điều tốt đẹp phía trước!"
 ]
+
+API_URL = "http://127.0.0.1:5000/"
+def call_api(endpoint, payload, files=None):
+    url = API_URL + endpoint
+    headers = {
+    'X-API-Key': '123456ABCDEF'
+    }
+    response = requests.request("POST", url, headers=headers, data=payload, files=files)
+
+    return response
 
 # lưu cookie lại mỗi khi đăng nhập thành công
 async def save_cookies(browser):
@@ -686,6 +698,18 @@ async def is_logged_in(browser):
         return False  # Nếu có lỗi, giả định là chưa đăng nhập
 async def read_notification(browser):
     """Đọc thông báo mới trên Facebook"""
+
+async def comment_recruitment_post(driver, user_id):
+    comment = call_api("get_comment", {'user_id': user_id})
+    if comment.status_code == 200:
+        comment_data = comment.json()
+        if not "comment" in comment_data:
+            log_message(f"Không có comment nào để xử lý cho user_id {user_id}", logging.INFO)
+            return
+        # Xử lý dữ liệu comment ở đây
+        log_message(f"Đã lấy comment: {comment_data}", logging.INFO)
+    else:
+        log_message(f"Không thể lấy comment: {comment.text}", logging.ERROR)
 
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):

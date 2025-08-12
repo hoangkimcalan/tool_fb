@@ -1,7 +1,8 @@
 import aiohttp
 import asyncio
 
-URL_API = "http://localhost:4000/api"
+# URL_API = "http://localhost:4000/api"
+URL_API = "http://123.24.206.25:4000/api"
 # URL_API = "https://backend-crm-skmr.onrender.com/api"
 
 async def create_post(post_data):

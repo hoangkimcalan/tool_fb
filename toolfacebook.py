@@ -38,13 +38,44 @@ from selenium.common.exceptions import TimeoutException
 
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
-# Constants
-COOKIE_FILE = "fb_cookies.json" 
-WEBSOCKET_URL = "ws://123.24.206.25:4000"
-# WEBSOCKET_URL = "ws://localhost:4000"
-# WEBSOCKET_URL = "wss://backend-crm-skmr.onrender.com"
-POST_STRUCTURE_FILE = "post_structure.json"
+COOKIE_FILENAME = "fb_cookies.json"
+POST_STRUCTURE_FILENAME = "post_structure.json"
 
+DEFAULT_COOKIE_DATA = "{}"
+DEFAULT_POST_STRUCTURE_DATA = '{"posts": {}}'
+
+# Lấy đường dẫn thư mục APPDATA trên Windows hoặc thư mục tương đương trên các OS khác
+if sys.platform == "win32":
+    appdata_path = os.getenv("APPDATA")
+elif sys.platform == "darwin":  # macOS
+    appdata_path = os.path.expanduser("~/Library/Application Support")
+else:  # Linux
+    appdata_path = os.path.expanduser("~/.config")
+
+# Tạo đường dẫn đầy đủ đến các file
+COOKIE_FILE = os.path.join(appdata_path, COOKIE_FILENAME)
+POST_STRUCTURE_FILE = os.path.join(appdata_path, POST_STRUCTURE_FILENAME)
+
+# Kiểm tra và tạo file fb_cookies.json
+if not os.path.exists(COOKIE_FILE):
+    print(f"File {COOKIE_FILE} not found. Creating a new one...")
+    try:
+        with open(COOKIE_FILE, "w") as f:
+            f.write(DEFAULT_COOKIE_DATA)
+    except IOError as e:
+        print(f"Error creating file {COOKIE_FILE}: {e}")
+
+# Kiểm tra và tạo file post_structure.json
+if not os.path.exists(POST_STRUCTURE_FILE):
+    print(f"File {POST_STRUCTURE_FILE} not found. Creating a new one...")
+    try:
+        with open(POST_STRUCTURE_FILE, "w") as f:
+            f.write(DEFAULT_POST_STRUCTURE_DATA)
+    except IOError as e:
+        print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
+
+# Các hằng số khác (không thay đổi)
+WEBSOCKET_URL = "ws://123.24.206.25:4000"
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
 

@@ -9,6 +9,7 @@ import sys
 
 import pyperclip
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.action_chains import ActionChains
@@ -144,13 +145,15 @@ CONTENT_POST = [
 ]
 
 API_URL = "http://127.0.0.1:5000/"
-def call_api(endpoint, payload, files=None):
+def call_api(endpoint, payload, type="data", files=None):
     url = API_URL + endpoint
     headers = {
     'X-API-Key': '123456ABCDEF'
     }
-    response = requests.request("POST", url, headers=headers, data=payload, files=files)
-
+    if type == "data":
+        response = requests.request("POST", url, headers=headers, data=payload, files=files)
+    elif type == "json":
+        response = requests.request("POST", url, headers=headers, json=payload, files=files)
     return response
 
 # lưu cookie lại mỗi khi đăng nhập thành công
@@ -702,14 +705,110 @@ async def read_notification(browser):
 async def comment_recruitment_post(driver, user_id):
     comment = call_api("get_comment", {'user_id': user_id})
     if comment.status_code == 200:
-        comment_data = comment.json()
-        if not "comment" in comment_data:
+        link_post = comment.json().get("link")
+        comment = comment.json().get("comment", {})
+        if comment is None or not comment:
             log_message(f"Không có comment nào để xử lý cho user_id {user_id}", logging.INFO)
             return
-        # Xử lý dữ liệu comment ở đây
-        log_message(f"Đã lấy comment: {comment_data}", logging.INFO)
+        driver.get(link_post)
+        await asyncio.sleep(5)  # Chờ trang tải
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1)
+        comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Viết bình luận công khai…"]')
+        if not comment_box:
+            comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Viết câu trả lời..."]')
+        if not comment_box:
+            comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Hãy gửi bình luận đầu tiên của bạn…"]')
+        if not comment_box:
+            return -1
+        comment_box = comment_box[0]
+        # Di chuyển đến ô bình luận
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", comment_box)
+        time.sleep(1)
+        if not comment_box.is_displayed():
+            return -1
+        pyperclip.copy(comment)
+        comment_box.send_keys(Keys.CONTROL, 'v')
+        time.sleep(1)
+        # comment_box.send_keys("\n")  # Gửi bình luận
+        log_message(f"Đã lấy comment: {comment}", logging.INFO)
     else:
-        log_message(f"Không thể lấy comment: {comment.text}", logging.ERROR)
+        log_message(f"Không thể lấy comment: {comment.json().get('message', 'Unknown error')}", logging.ERROR)
+
+def close_dialog(driver):
+    try:
+        # Ấn nút "Đóng" nếu có
+        close_btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Đóng' and @role='button']"))
+        )
+        close_btn.click()
+    except:
+        pass
+
+    try:
+        # Ấn nút "Thoát" nếu có
+        exit_btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Thoát' and @role='button']"))
+        )
+        exit_btn.click()
+    except:
+        pass
+
+async def check_joined_groups(driver, user_id):
+    """Kiểm tra xem đã tham gia nhóm hay chưa."""
+    driver.get("https://www.facebook.com/groups/joins")
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located(
+            (
+                By.XPATH, 
+                "//div[@class='x1jx94hy x1obq294 x5a5i1n xde0f50 x15x8krk x1olyfxc x9f619 x78zum5 xdt5ytf x1qughib xyamay9 xv54qhq x1l90r2v xf7dkkf']"
+            )
+        )
+    )
+    joined_groups = driver.find_elements(By.XPATH, "//div[@class='x1jx94hy x1obq294 x5a5i1n xde0f50 x15x8krk x1olyfxc x9f619 x78zum5 xdt5ytf x1qughib xyamay9 xv54qhq x1l90r2v xf7dkkf']")
+    joined_group_links = []
+    for group in joined_groups:
+        if "Xem nhóm" in group.text:    
+            # Tìm tất cả thẻ <a> có href chứa 'facebook.com/groups/'
+            group_link = group.find_element(By.XPATH, ".//a[contains(@href, 'facebook.com/groups/')]")
+
+            href = group_link.get_attribute("href")
+            joined_group_links.append(href)
+        else:
+            group.find_element(By.XPATH, ".//div[@aria-label='Trả lời câu hỏi' and @role='button']").click()
+            await asyncio.sleep(2)
+            # Thêm logic xử lý câu hỏi nếu cần
+            close_dialog(driver)
+    call_api("update_joined_groups", {"user_id": user_id, "joined_groups[]": joined_group_links})
+    log_message(f"Đã cập nhật danh sách nhóm đã tham gia cho user_id {user_id}: \n{'\n'.join(joined_group_links)}", logging.INFO)
+
+async def join_group(driver, user_id, group_link = ""):
+    if group_link == "":
+        group_link = call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
+        if group_link.status_code != 200:
+            print(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_link.json().get('message', 'Unknown error')}")
+            return
+        group_link = group_link.json().get("link", "")
+        if not group_link:
+            print(f"Không có nhóm nào để tham gia cho user_id {user_id}")
+            return
+    driver.get("https://www.facebook.com/" + group_link)
+    await asyncio.sleep(5)  # Chờ trang tải
+    # Tìm nút tham gia nhóm
+    try:
+        join_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[@role='button' and @aria-label='Tham gia nhóm']"))
+        )
+    except (NoSuchElementException, TimeoutException):
+        print(f"Không tìm thấy nút tham gia nhóm cho user_id {user_id} tại https://www.facebook.com/{group_link}")
+        return
+    join_button.click()
+
+    await asyncio.sleep(10)
+    html = driver.page_source
+
+    call_api("save_html", {"user_id": user_id, "html": html}, "json")
+    log_message(f"Đã gửi yêu cầu tham gia nhóm cho user_id {user_id}: {group_link}", logging.INFO)
 
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):

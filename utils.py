@@ -48,15 +48,6 @@ os.makedirs(log_dir, exist_ok=True)
 
 log_file = os.path.join(log_dir, "toolfacebook.log")
 
-def log_message(message, level=logging.INFO):
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    if level == logging.DEBUG:
-        logging.info(message)
-    elif level == logging.WARNING:
-        logging.warning(message)
-    elif level == logging.ERROR:
-        logging.error(message) # Vẫn in log ra terminal để debug dễ hơn
-
 async def hide_process():
     # Hide window and process
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()

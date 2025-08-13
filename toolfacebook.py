@@ -220,9 +220,11 @@ async def login(username, password, code_2fa, browser):
         if '"userID":' in browser.page_source:
             log_message("Login successful!")
             await save_cookies(browser)
+            # Reload Facebook homepage after successful login
+            browser.get("https://facebook.com/")
+            await asyncio.sleep(3)
     except Exception as e:
         log_message(f"Login failed: {e}",logging.ERROR)
-
 
 #Hàm react_post
 async def react_post(browser):
@@ -671,8 +673,8 @@ async def surf_facebook(id, title, browser):
             # Thoi gian dung lai de doc tin
             await asyncio.sleep(random.uniform(4, 6))
 
-            if scroll_count % 13 == 0:
-                # await comment_post(browser, actions)
+            if scroll_count % 3 == 0:
+                await comment_post(browser, actions)
                 await asyncio.sleep(random.uniform(3, 5))
             elif scroll_count % 7 == 0:
                 await react_post(browser)
@@ -754,6 +756,57 @@ def close_dialog(driver):
     except:
         pass
 
+def get_answer(driver, group_link, group_name):
+    need_answer = False
+    answer_question_dialog = driver.find_element(
+        By.XPATH,
+        "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
+    )
+    questions = answer_question_dialog.find_elements(By.XPATH, ".//span[@class='x1lliihq x6ikm8r x10wlt62 x1n2onr6 x1j85h84']")
+    for question in questions:
+        grandparent = question.find_element(By.XPATH, "./../../../../../..")
+        answers = grandparent.find_elements(By.XPATH, ".//span[@class='x193iq5w xeuugli x13faqbe x1vvkbs x1xmvt09 x6prxxf xvq8zen x1s688f xzsf02u']")
+        how_to_answer = grandparent.find_element(By.XPATH, ".//span[@class='x193iq5w xeuugli x13faqbe x1vvkbs x1xmvt09 x1nxh6w3 x1sibtaa xo1l8bm xi81zsa']")
+        how_to_answer = how_to_answer.text if how_to_answer.text.strip() else 'Trả lời câu hỏi'
+        answer = call_api("get_answer", {
+            "group_link": group_link,
+            "group_name": group_name,
+            "question": question.text,
+            "how_to_answer": how_to_answer,
+            "answers[]": [answer.text for answer in answers]
+        })
+        if answer.status_code == 200:
+            answer = answer.json().get("answer", "")
+            time.sleep(1)
+            if answer:
+                if how_to_answer == "Trả lời câu hỏi":
+                    answer_input = grandparent.find_element(By.XPATH, ".//textarea")
+                    answer_input.click()
+                    answer_input.send_keys(answer)
+                if "nhiều" in how_to_answer:
+                    for checktext in answer.split("|"):
+                        checkbox = grandparent.find_element(
+                            By.XPATH,
+                            f"//label[.//span[text()='{checktext}']]//input[@type='checkbox']"
+                        )
+                        checkbox.click()
+                if "1" in how_to_answer:
+                    radio = grandparent.find_element(
+                        By.XPATH,
+                        f"//input[@type='radio' and @value='{answer}']"
+                    )
+                    radio.click()
+            time.sleep(1)
+        else:
+            need_answer = True
+    if need_answer:
+        close_dialog(driver)
+    else:
+        answer_question_dialog.find_element(
+            By.XPATH,
+            "//div[@aria-label='Gửi' and @role='button']"
+        ).click()
+
 async def check_joined_groups(driver, user_id):
     """Kiểm tra xem đã tham gia nhóm hay chưa."""
     driver.get("https://www.facebook.com/groups/joins")
@@ -768,30 +821,29 @@ async def check_joined_groups(driver, user_id):
     joined_groups = driver.find_elements(By.XPATH, "//div[@class='x1jx94hy x1obq294 x5a5i1n xde0f50 x15x8krk x1olyfxc x9f619 x78zum5 xdt5ytf x1qughib xyamay9 xv54qhq x1l90r2v xf7dkkf']")
     joined_group_links = []
     for group in joined_groups:
+        # Tìm tất cả thẻ <a> có href chứa 'facebook.com/groups/'
+        group_link = group.find_elements(By.XPATH, ".//a[contains(@href, 'facebook.com/groups/')]")[1]
+        href = group_link.get_attribute("href")
         if "Xem nhóm" in group.text:    
-            # Tìm tất cả thẻ <a> có href chứa 'facebook.com/groups/'
-            group_link = group.find_element(By.XPATH, ".//a[contains(@href, 'facebook.com/groups/')]")
-
-            href = group_link.get_attribute("href")
             joined_group_links.append(href)
-        else:
+        elif "Trả lời câu hỏi" in group.text:
+            group_name = group_link.text
             group.find_element(By.XPATH, ".//div[@aria-label='Trả lời câu hỏi' and @role='button']").click()
             await asyncio.sleep(2)
-            # Thêm logic xử lý câu hỏi nếu cần
-            close_dialog(driver)
+            get_answer(driver, href, group_name)        
     call_api("update_joined_groups", {"user_id": user_id, "joined_groups[]": joined_group_links})
     log_message(f"Đã cập nhật danh sách nhóm đã tham gia cho user_id {user_id}: \n{'\n'.join(joined_group_links)}", logging.INFO)
 
-async def join_group(driver, user_id, group_link = ""):
-    if group_link == "":
-        group_link = call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
-        if group_link.status_code != 200:
-            print(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_link.json().get('message', 'Unknown error')}")
-            return
-        group_link = group_link.json().get("link", "")
-        if not group_link:
-            print(f"Không có nhóm nào để tham gia cho user_id {user_id}")
-            return
+async def join_group(driver, user_id, group_link = "", group_name = ""):
+    group_api = call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
+    if group_api.status_code != 200:
+        print(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_api.json().get('message', 'Unknown error')}")
+        return
+    group_link = group_api.json().get("link", "")
+    group_name = group_api.json().get("name", "")
+    if not group_link:
+        print(f"Không có nhóm nào để tham gia cho user_id {user_id}")
+        return
     driver.get("https://www.facebook.com/" + group_link)
     await asyncio.sleep(5)  # Chờ trang tải
     # Tìm nút tham gia nhóm
@@ -803,8 +855,17 @@ async def join_group(driver, user_id, group_link = ""):
         print(f"Không tìm thấy nút tham gia nhóm cho user_id {user_id} tại https://www.facebook.com/{group_link}")
         return
     join_button.click()
-
-    await asyncio.sleep(10)
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
+            ))
+        )
+        get_answer(driver, group_link, group_name)
+    except (NoSuchElementException, TimeoutException):
+        pass
+    await asyncio.sleep(5)
     html = driver.page_source
 
     call_api("save_html", {"user_id": user_id, "html": html}, "json")
@@ -849,9 +910,9 @@ async def main(client_user_id_chat):
         log_message(f"Đang chạy tool cho tài khoản: {facebook_username} (User ID Chat: {client_user_id_chat})", logging.INFO)
 
         chrome_options = Options()
-        prefs = {"profile.managed_default_content_settings.images": 2}
-        chrome_options.add_experimental_option("prefs", prefs)
-        chrome_options.add_argument("--headless")
+        # prefs = {"profile.managed_default_content_settings.images": 2}
+        # chrome_options.add_experimental_option("prefs", prefs)
+        # chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
 
@@ -892,12 +953,12 @@ async def main(client_user_id_chat):
             log_message("Cookies không hợp lệ hoặc hết hạn, cần đăng nhập lại.")
             # Hàm login gốc không trả về giá trị, giả định nó thành công nếu không có ngoại lệ
             await login(facebook_username, facebook_password, facebook_2fa_code, browser)
-            # Sau khi login, kiểm tra lại trạng thái đăng nhập
-            if not await is_logged_in(browser):
-                log_message("Đăng nhập thất bại sau khi thử. Chương trình sẽ dừng lại.", logging.ERROR)
-                return
+            # # Sau khi login, kiểm tra lại trạng thái đăng nhập
+            # if not await is_logged_in(browser):
+            #     log_message("Đăng nhập thất bại sau khi thử. Chương trình sẽ dừng lại.", logging.ERROR)
+            #     return
             
-        await asyncio.sleep(3)
+        await asyncio.sleep(120)
 
         page_source = browser.page_source
         if '"userID":' in page_source:
@@ -911,13 +972,13 @@ async def main(client_user_id_chat):
                 # surf_facebook gốc có 3 tham số, giữ nguyên để không thay đổi logic cũ
                 await surf_facebook("", random.choice(COMMENTS), browser)
                 await asyncio.sleep(random.uniform(2, 4))
-                await watch_videos(browser, actions = ActionChains(browser))
-                await post_news_feed(browser)
-                await asyncio.sleep(random.uniform(2, 4))
-                await list_friend(browser)
-                await asyncio.sleep(random.uniform(2, 4))
-                await add_friend(browser)
-                await asyncio.sleep(random.uniform(200, 300))
+                # await watch_videos(browser, actions = ActionChains(browser))
+                # await post_news_feed(browser)
+                # await asyncio.sleep(random.uniform(2, 4))
+                # await list_friend(browser)
+                # await asyncio.sleep(random.uniform(2, 4))
+                # await add_friend(browser)
+                # await asyncio.sleep(random.uniform(200, 300))
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)
                 traceback.print_exc()

@@ -74,6 +74,7 @@ if not os.path.exists(POST_STRUCTURE_FILE):
     except IOError as e:
         print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
 
+
 # Các hằng số khác (không thay đổi)
 WEBSOCKET_URL = "ws://123.24.206.25:4000"
 # Cấu hình cào comment

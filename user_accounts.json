@@ -1,22 +1,22 @@
 [
   {
-    "user_id_QLC": "22623688",
-    "user_id_chat": "10414289",
+    "user_id_QLC": "22616984",
+    "user_id_chat": "10407256",
     "facebook_username": "gianvu17607@gmail.com",
     "facebook_password": "lvqh1234",
     "facebook_2fa_code": "",
-    "note": "Chị Nhạn",
+    "note": "Anh Cả",
     "roleWebSocket": "B22623688",
     "nameFb": "Giản Vũ",
     "to": "22773024"
   },
   {
-    "user_id_QLC": "22735395",
-    "user_id_chat": "10534007",
+    "user_id_QLC": " 22809021",
+    "user_id_chat": "10676172",
     "facebook_username": "0966026485",
     "facebook_password": "hieu18",
     "facebook_2fa_code": "",
-    "note": "Chị Tâm",
+    "note": "Anh Huy",
     "roleWebSocket": "B22735395",
     "to": "22614471",
     "nameFb": "Hoàng Hiếu"
@@ -33,12 +33,12 @@
     "nameFb": "Gia Giang"
   },
   {
-    "user_id_QLC": "22636101",
-    "user_id_chat": "10427357",
+    "user_id_QLC": " 22865595",
+    "user_id_chat": "10676172",
     "facebook_username": "0382785319",
     "facebook_password": "hhp123988",
     "facebook_2fa_code": "",
-    "note": "Chị Thùy",
+    "note": "Em Trung",
     "roleWebSocket": "B22636101",
     "to": "22614471",
     "nameFb": "Phương Nam"

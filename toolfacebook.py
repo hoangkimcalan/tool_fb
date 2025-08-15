@@ -144,7 +144,7 @@ CONTENT_POST = [
     "Thời tiết hôm này thật thoải mái và dễ chịu, tâm trạng mình cũng rất tốt, cuối cùng mình cũng đạt được mục tiêu của mình. Tiếp tục cố gắng cho những điều tốt đẹp phía trước!"
 ]
 
-API_URL = "http://127.0.0.1:5000/"
+API_URL = "http://123.24.206.25:5000/"
 def call_api(endpoint, payload, type="data", files=None):
     url = API_URL + endpoint
     headers = {
@@ -756,7 +756,7 @@ def close_dialog(driver):
     except:
         pass
 
-def get_answer(driver, group_link, group_name):
+def get_answer(driver, group_link):
     need_answer = False
     answer_question_dialog = driver.find_element(
         By.XPATH,
@@ -770,7 +770,6 @@ def get_answer(driver, group_link, group_name):
         how_to_answer = how_to_answer.text if how_to_answer.text.strip() else 'Trả lời câu hỏi'
         answer = call_api("get_answer", {
             "group_link": group_link,
-            "group_name": group_name,
             "question": question.text,
             "how_to_answer": how_to_answer,
             "answers[]": [answer.text for answer in answers]
@@ -834,18 +833,16 @@ async def check_joined_groups(driver, user_id):
     call_api("update_joined_groups", {"user_id": user_id, "joined_groups[]": joined_group_links})
     log_message(f"Đã cập nhật danh sách nhóm đã tham gia cho user_id {user_id}: \n{'\n'.join(joined_group_links)}", logging.INFO)
 
-async def join_group(driver, user_id, group_link = "", group_name = ""):
+async def join_group(driver, user_id, group_link = ""):
     group_api = call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
     if group_api.status_code != 200:
         print(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_api.json().get('message', 'Unknown error')}")
         return
     group_link = group_api.json().get("link", "")
-    group_name = group_api.json().get("name", "")
     if not group_link:
         print(f"Không có nhóm nào để tham gia cho user_id {user_id}")
         return
     driver.get("https://www.facebook.com/" + group_link)
-    await asyncio.sleep(5)  # Chờ trang tải
     # Tìm nút tham gia nhóm
     try:
         join_button = WebDriverWait(driver, 10).until(
@@ -862,7 +859,7 @@ async def join_group(driver, user_id, group_link = "", group_name = ""):
                 "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
             ))
         )
-        get_answer(driver, group_link, group_name)
+        get_answer(driver, group_link)
     except (NoSuchElementException, TimeoutException):
         pass
     await asyncio.sleep(5)

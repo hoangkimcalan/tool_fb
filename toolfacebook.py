@@ -79,6 +79,9 @@ if not os.path.exists(POST_STRUCTURE_FILE):
 # Các hằng số khác (không thay đổi)
 # WEBSOCKET_URL = "ws://123.24.206.25:4000"
 WEBSOCKET_URL = "ws://localhost:4000"
+URL_IMAGE = "http://192.168.0.116:4000"
+
+
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
 
@@ -304,6 +307,7 @@ async def connect_websocket():
                 register_message = {
                     "type": "register",
                     "clientId": current_client_id,
+                    "to": get_id_tosend_websocket(),
                 }
                 await websocket.send(json.dumps(register_message))
                 log_message(f"Đã gửi tin nhắn đăng ký với clientId: {current_client_id}", logging.INFO)
@@ -418,6 +422,7 @@ async def download_image(url, filename):
         os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
         log_message(f"Thư mục lưu ảnh: {DOWNLOAD_FOLDER}", logging.INFO)
         
+        url_image = URL_IMAGE + url
         # Đường dẫn đầy đủ của file
         filename = filename + '.png'
         file_path = os.path.join(DOWNLOAD_FOLDER, filename)
@@ -425,7 +430,7 @@ async def download_image(url, filename):
         
         # Tải ảnh bằng aiohttp
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url_image) as response:
                 if response.status == 200:
                     # Ghi file bằng aiofiles
                     async with aiofiles.open(file_path, 'wb') as f:
@@ -438,7 +443,7 @@ async def download_image(url, filename):
                     log_message(f"Lỗi tải ảnh: HTTP {response.status}", logging.ERROR)
                     return None
     except Exception as e:
-        log_message(f"Lỗi khi tải ảnh từ {url}: {e}", logging.ERROR)
+        log_message(f"Lỗi khi tải ảnh từ {url_image}: {e}", logging.ERROR)
         return None
 
 

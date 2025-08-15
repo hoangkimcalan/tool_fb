@@ -167,22 +167,6 @@ def get_commenter_name(post_id, comment_id, reply_id=None):
                         log_message(f"Tìm thấy commenter_name trong comment: {commenter_name}", logging.INFO)
                         return commenter_name
         if not commenter_name:
-            user_accounts = load_user_accounts()
-            for account_key, account_info in user_accounts.items():
-                if isinstance(account_info, dict):
-                    if "nameFb" in account_info and account_info["nameFb"]:
-                        commenter_name = account_info["nameFb"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (nameFb): {commenter_name}", logging.INFO)
-                        break
-                    elif "note" in account_info and account_info["note"]:
-                        commenter_name = account_info["note"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (note): {commenter_name}", logging.INFO)
-                        break
-                    elif "facebook_name" in account_info and account_info["facebook_name"]:
-                        commenter_name = account_info["facebook_name"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (facebook_name): {commenter_name}", logging.INFO)
-                        break
-        if not commenter_name:
             log_message(f"Không tìm thấy commenter_name cho post_id={post_id}, comment_id={comment_id}, reply_id={reply_id}", logging.WARNING)
         return commenter_name
     except Exception as e:

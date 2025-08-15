@@ -10,7 +10,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from api import create_post, create_comment, create_reply_comment
 from utils import log_message
 import aiohttp
-import aiofiles
 import os
 import logging
 import re
@@ -1659,7 +1658,7 @@ async def post_news_feed(browser,pending_posts, get_facebook_name, get_websocket
             raise Exception("Không thể click nút Đăng sau 3 lần thử")
         
         # Đợi bài viết được đăng thành công và lấy link bài viết
-        await asyncio.sleep(random.uniform(4, 6))
+        await asyncio.sleep(random.uniform(8,10))
         
         try:
             post_url = None
@@ -1881,30 +1880,6 @@ async def post_news_feed(browser,pending_posts, get_facebook_name, get_websocket
                     async def send_url_to_websocket():
                         try:
                             async with websockets.connect(WEBSOCKET_URL) as websocket:
-                                # # Sử dụng lại clientId đã đăng ký từ connect_websocket()
-                                # global current_client_id
-                                # if current_client_id:
-                                #     register_message = {
-                                #         "type": "register",
-                                #         "clientId": current_client_id
-                                #     }
-                                    
-                                #     await websocket.send(json.dumps(register_message))
-                                #     log_message(f"📝 Sử dụng lại clientId đã đăng ký: {current_client_id}", logging.INFO)
-                                # else:
-                                #     # Fallback nếu chưa có clientId
-                                #     import time
-                                #     current_client_id = f"clientB_{int(time.time() * 1000)}"
-                                #     register_message = {
-                                #         "type": "register",
-                                #         "clientId": current_client_id
-                                #     }
-                                    
-                                #     await websocket.send(json.dumps(register_message))
-                                #     log_message(f"📝 Tạo clientId mới: {current_client_id}", logging.INFO)
-                                
-                                # # Đợi phản hồi đăng ký thành công (tùy chọn)
-                                # await asyncio.sleep(0.5)
                                 
                                 # Gửi dữ liệu URL
                                 await websocket.send(json.dumps(url_data))

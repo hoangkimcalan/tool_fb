@@ -76,8 +76,10 @@ if not os.path.exists(POST_STRUCTURE_FILE):
         print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
 
 # Các hằng số khác (không thay đổi)
-WEBSOCKET_URL = "ws://localhost:4000"
-URL_IMAGE = "http://192.168.0.116:4000"
+# WEBSOCKET_URL = "ws://localhost:4000"
+WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
+# URL_IMAGE = "http://192.168.0.116:4000"
+URL_IMAGE = "https://socket.hungha365.com:4000"
 
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment

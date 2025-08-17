@@ -21,6 +21,7 @@ from datetime import datetime
 import pyperclip
 import csv
 import psutil
+import shutil
 import pandas as pd
 from datetime import timedelta
 from api import create_post, create_comment, create_reply_comment
@@ -35,6 +36,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException
+from seleniumwire import webdriver 
+
+
 
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
@@ -3255,7 +3259,7 @@ async def surf_facebook(id, title, browser):
         await asyncio.sleep(random.uniform(5, 8))  # Chờ trang tải xong
     try:
         await asyncio.sleep(random.uniform(3, 5))
-        scroll_count = random.randint(14, 15)  # Số lần cuộn
+        scroll_count = random.randint(7, 20)  # Số lần cuộn
         actions = ActionChains(browser)
         while scroll_count > 0:
             # Kiểm tra flag để dừng lướt khi có tin mới từ WebSocket
@@ -3284,7 +3288,7 @@ async def surf_facebook(id, title, browser):
                 break
 
             if scroll_count % 13 == 0:
-                # await comment_post(browser, actions)
+                await comment_post(browser, actions)
                 await asyncio.sleep(random.uniform(3, 5))
                 # Kiểm tra flag sau khi comment
                 if stop_browsing:
@@ -4553,10 +4557,80 @@ def kill_existing_process():
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
+def create_proxy_extension(proxy_ip, proxy_port, proxy_username, proxy_password):
+    """
+    Tạo một thư mục chứa extension proxy với thông tin xác thực.
+    Trẻ và đường dẫn đến thư mục extension
+    """
+    if sys.platform == "win32":
+        appdata_base_path = os.getenv("APPDATA")
+    elif sys.platform == "darwin":  # macOS
+
+        appdata_base_path = os.path.expanduser("~/Library/Application Support")
+    else:  # Linux và các hệ điều hành khác
+        appdata_base_path = os.path.expanduser("~/.config")
+    extension_dir = os.path.join(appdata_base_path, "proxy_extension")
+    if os.path.exists(extension_dir):
+        shutil.rmtree(extension_dir)
+    os.makedirs(extension_dir)
+    
+    manifest_json = """
+    {
+      "version": "1.0.0",
+      "manifest_version": 2,
+      "name": "Proxy Auth",
+      "permissions": [
+        "proxy",
+        "webRequest",
+        "webRequestBlocking",
+        "<all_urls>"
+      ],
+      "background": {
+        "scripts": ["background.js"]
+      },
+      "minimum_chrome_version": "22.0.0"
+    }
+    """
+
+    background_js = f"""
+    var config = {{
+      mode: "fixed_servers",
+      rules: {{
+        singleProxy: {{
+          scheme: "http",
+          host: "{proxy_ip}",
+          port: parseInt("{proxy_port}")
+        }}
+      }}
+    }};
+    
+    chrome.proxy.settings.set({{ value: config, scope: "regular" }}, function() {{}});
+    
+    function callbackFn(details) {{
+      return {{
+        authCredentials: {{
+          username: "{proxy_username}",
+          password: "{proxy_password}"
+        }}
+      }};
+    }}
+    
+    chrome.webRequest.onAuthRequired.addListener(
+      callbackFn,
+      {{ urls: ["<all_urls>"] }},
+      ['blocking']
+    );
+    """
+    with open(os.path.join(extension_dir, "manifest.json"), "w") as f:
+        f.write(manifest_json)
+    with open(os.path.join(extension_dir, "background.js"), "w") as f:
+        f.write(background_js)
+    return os.path.abspath(extension_dir)
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
     kill_existing_process()
     browser = None
+    proxy_extension_path = None
     try:
         # Kiểm tra tham số đầu vào
         if not client_user_id_chat:
@@ -4597,13 +4671,23 @@ async def main(client_user_id_chat):
         chrome_options = Options()
         # prefs = {"profile.managed_default_content_settings.images": 2}
         # chrome_options.add_experimental_option("prefs", prefs)
-        chrome_options.add_argument("--headless")
+        # chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
-
-        # chrome_options.add_experimental_option("useAutomationExtension", False)
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-
+        # Kiểm tra và thiết lập proxy nếu có
+        proxy_ip = account_data.get("proxy_ip")
+        proxy_port = account_data.get("proxy_port")
+        proxy_username = account_data.get("proxy_user")
+        proxy_password = account_data.get("proxy_pass")
+        if proxy_ip and proxy_port and proxy_username and proxy_password:
+            log_message(f"Sử dụng proxy: {proxy_ip}:{proxy_port} với user {proxy_username}", logging.INFO)
+            #Tạo extension proxy
+            proxy_extension_path = create_proxy_extension(proxy_ip, proxy_port, proxy_username, proxy_password)
+            chrome_options.add_argument(f"--load-extension={proxy_extension_path}")
+        else:
+            log_message("Không sử dụng proxy, tài khoản này sử dụng IP mặc định", logging.INFO)
+        # Khởi tạo trình duyệt Chrome với các tùy chọn
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         chrome_options.add_argument(f"user-agent={user_agent}")
         screen_width = 1920  # Adjust this value based on your screen resolution
@@ -4620,6 +4704,12 @@ async def main(client_user_id_chat):
             Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
+        # Lấy IP hiển thị trên trình duyệt
+        log_message("Đang lấy IP hiển thị trên trình duyệt...", logging.INFO)
+        browser.get("https://ipv4.icanhazip.com/")
+        page_content = browser.find_element(By.TAG_NAME, "pre").text
+        displayed_ip = page_content.strip()
+        print(f"IP hiển thị trên trình duyệt: {displayed_ip}")
         # dang nhap tren fb
         actions = ActionChains(browser)
         browser.get("https://facebook.com")
@@ -4792,7 +4882,12 @@ async def main(client_user_id_chat):
             except:
                 pass
         log_message("Chương trình đã kết thúc.", logging.INFO)
-
+        if proxy_extension_path and os.path.exists(proxy_extension_path):
+            try:
+                shutil.rmtree(proxy_extension_path)
+                log_message(f"Đã xóa thư mục proxy extension: {proxy_extension_path}", logging.INFO)
+            except Exception as e:
+                log_message(f"Lỗi khi xóa thư mục proxy extension: {e}", logging.ERROR)
 
 if __name__ == "__main__":
     # Lấy user_id_chat từ command line arguments

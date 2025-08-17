@@ -8,11 +8,15 @@
     "note": "Anh Cả",
     "roleWebSocket": "B22623688",
     "nameFb": "Giản Vũ",
-    "to": "22773024"
+    "to": "22773024",
+    "proxy_ip": "116.97.15.251",
+    "proxy_port": "22170",
+    "proxy_user": "muaproxy689ef889877d0",
+    "proxy_pass": "omglrlc5194ghtuy"
   },
   {
-    "user_id_QLC": " 22809021",
-    "user_id_chat": " 10615237",
+    "user_id_QLC": "22809021",
+    "user_id_chat": "10615237",
     "facebook_username": "0966026485",
     "facebook_password": "hieu18",
     "facebook_2fa_code": "",
@@ -33,7 +37,7 @@
     "nameFb": "Gia Giang"
   },
   {
-    "user_id_QLC": " 22865595",
+    "user_id_QLC": "22865595",
     "user_id_chat": "10676172",
     "facebook_username": "0382785319",
     "facebook_password": "hhp123988",
@@ -42,5 +46,9 @@
     "roleWebSocket": "B22636101",
     "to": "22614471",
     "nameFb": "Phương Nam"
+  },
+  {
+
+      
   }
 ]

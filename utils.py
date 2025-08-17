@@ -150,3 +150,4 @@ logging.basicConfig(level=logging.INFO, handlers=[handler])
 def log_message(message, level=logging.INFO):
     """Log messages in a standardized format with colors."""
     logging.log(level, message)
+

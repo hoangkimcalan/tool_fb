@@ -2088,7 +2088,9 @@ async def reply_to_reply_comment(browser):
                     userId = reply_data.get("authorId", "")
                     
                     # Lấy commenter name từ post structure hoặc user accounts
-                    commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_to_reply_id)
+                    commenter_name = reply_data.get("replyToAuthor")
+                    if not commenter_name:
+                        commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_to_reply_id)
                     if not commenter_name:
                         commenter_name = user_name  # Fallback về tên Facebook hiện tại
                     

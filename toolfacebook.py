@@ -43,7 +43,15 @@ COOKIE_FILENAME = "fb_cookies.json"
 POST_STRUCTURE_FILENAME = "post_structure.json"
 
 DEFAULT_COOKIE_DATA = "{}"
-DEFAULT_POST_STRUCTURE_DATA = '{"posts": {}}'
+DEFAULT_POST_STRUCTURE_DATA = '{"posts": {}}' 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
+USER_ACCOUNTS_FILE = os.path.join(PARENT_DIR, "user_accounts.json")
+print(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}")
+log_message(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}", logging.INFO)
 
 # Lấy đường dẫn thư mục APPDATA trên Windows hoặc thư mục tương đương trên các OS khác
 if sys.platform == "win32":
@@ -294,8 +302,8 @@ def load_post_structure():
 def load_user_accounts():
     """Load thông tin user accounts từ file JSON"""
     try:
-        if os.path.exists("user_accounts.json"):
-            with open("user_accounts.json", 'r', encoding='utf-8') as f:
+        if os.path.exists(USER_ACCOUNTS_FILE):
+            with open(USER_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 # Nếu data là array, convert thành dict với key là user_id_QLC
                 if isinstance(data, list):
@@ -4559,7 +4567,7 @@ async def main(client_user_id_chat):
         account_data = None
         global current_account_data  # Khai báo sử dụng biến global
         try:
-            with open("user_accounts.json", "r", encoding="utf-8") as file:
+            with open(USER_ACCOUNTS_FILE, "r", encoding="utf-8") as file:
                 accounts = json.load(file)
                 
                 for acc in accounts:
@@ -4806,9 +4814,6 @@ async def main(client_user_id_chat):
 
 if __name__ == "__main__":
     # Lấy user_id_chat từ command line arguments
-    delay = random.randint(30, 60)  # Delay ngẫu nhiên từ 30-60 giây
-    print(f"[DELAY] Đợi {delay} giây trước khi khởi động toolfacebook.py...")
-    time.sleep(delay)
     if len(sys.argv) > 1:
         client_user_id_chat = sys.argv[1]
         print(f"Starting tool with user_id_chat: {client_user_id_chat}")

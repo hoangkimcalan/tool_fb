@@ -4,4 +4,10 @@ pyperclip==1.8.2
 colorlog==6.7.0
 pywin32==310
 asyncio
-websockets 
+websockets
+aiohttp
+aiofiles
+psutil
+pandas
+requests
+blinker==1.4

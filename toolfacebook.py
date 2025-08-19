@@ -9,7 +9,6 @@ import time
 import logging
 from datetime import datetime
 import os
-import logging
 import sys
 import websockets
 import aiohttp
@@ -25,8 +24,8 @@ import shutil
 import pandas as pd
 from datetime import timedelta
 from api import create_post, create_comment, create_reply_comment
+from seleniumwire import webdriver
 
-from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.action_chains import ActionChains
@@ -36,11 +35,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException
-from seleniumwire import webdriver 
-
-
-
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
+import logging
+logging.getLogger('seleniumwire').setLevel(logging.WARNING)
 
 COOKIE_FILENAME = "fb_cookies.json"
 POST_STRUCTURE_FILENAME = "post_structure.json"
@@ -78,10 +75,12 @@ if not os.path.exists(POST_STRUCTURE_FILE):
     except IOError as e:
         print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
 
-
 # Các hằng số khác (không thay đổi)
-# WEBSOCKET_URL = "ws://123.24.206.25:4000"
-WEBSOCKET_URL = "wss://socket.hungha365.com:4000"  # Địa chỉ WebSocket server
+# WEBSOCKET_URL = "ws://localhost:4000"
+WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
+# URL_IMAGE = "http://192.168.0.116:4000"
+URL_IMAGE = "https://socket.hungha365.com:4000"
+
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
 
@@ -480,25 +479,6 @@ def get_commenter_name(post_id, comment_id, reply_id=None):
                         log_message(f"Tìm thấy commenter_name trong comment: {commenter_name}", logging.INFO)
                         return commenter_name
         
-        # Nếu không tìm thấy trong post_structure, kiểm tra user_accounts
-        if not commenter_name:
-            user_accounts = load_user_accounts()
-            for account_key, account_info in user_accounts.items():
-                if isinstance(account_info, dict):
-                    # Tìm tên Facebook trong user_accounts
-                    if "nameFb" in account_info and account_info["nameFb"]:
-                        commenter_name = account_info["nameFb"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (nameFb): {commenter_name}", logging.INFO)
-                        break
-                    elif "note" in account_info and account_info["note"]:
-                        commenter_name = account_info["note"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (note): {commenter_name}", logging.INFO)
-                        break
-                    elif "facebook_name" in account_info and account_info["facebook_name"]:
-                        commenter_name = account_info["facebook_name"]
-                        log_message(f"Tìm thấy commenter_name trong user_accounts (facebook_name): {commenter_name}", logging.INFO)
-                        break
-        
         if not commenter_name:
             log_message(f"Không tìm thấy commenter_name cho post_id={post_id}, comment_id={comment_id}, reply_id={reply_id}", logging.WARNING)
         
@@ -647,6 +627,8 @@ async def download_image(url, filename):
         # Tạo thư mục nếu chưa tồn tại
         os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
         log_message(f"Thư mục lưu ảnh: {DOWNLOAD_FOLDER}", logging.INFO)
+
+        url_image = URL_IMAGE + url
         
         # Đường dẫn đầy đủ của file
         filename = filename + '.png'
@@ -655,7 +637,7 @@ async def download_image(url, filename):
         
         # Tải ảnh bằng aiohttp
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url_image) as response:
                 if response.status == 200:
                     # Ghi file bằng aiofiles
                     async with aiofiles.open(file_path, 'wb') as f:
@@ -668,7 +650,7 @@ async def download_image(url, filename):
                     log_message(f"Lỗi tải ảnh: HTTP {response.status}", logging.ERROR)
                     return None
     except Exception as e:
-        log_message(f"Lỗi khi tải ảnh từ {url}: {e}", logging.ERROR)
+        log_message(f"Lỗi khi tải ảnh từ {url_image}: {e}", logging.ERROR)
         return None
 
 # Hàm xóa file ảnh
@@ -2106,7 +2088,9 @@ async def reply_to_reply_comment(browser):
                     userId = reply_data.get("authorId", "")
                     
                     # Lấy commenter name từ post structure hoặc user accounts
-                    commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_to_reply_id)
+                    commenter_name = reply_data.get("replyToAuthor")
+                    if not commenter_name:
+                        commenter_name = get_commenter_name(extracted_post_id, comment_id_from_websocket, reply_to_reply_id)
                     if not commenter_name:
                         commenter_name = user_name  # Fallback về tên Facebook hiện tại
                     
@@ -2517,7 +2501,7 @@ async def post_news_feed(browser):
                 traceback.print_exc()
             
             # SAU KHI UPLOAD ẢNH: Nhập nội dung
-            post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
+            post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='xzsf02u x1a2a7pz x1n2onr6 x14wi4xw x9f619 x1lliihq x5yr21d xh8yej3 notranslate']")))
             await asyncio.sleep(1)
             p_tag = post_box.find_element(By.TAG_NAME, "p")
             if p_tag and p_tag.is_displayed():
@@ -2539,7 +2523,8 @@ async def post_news_feed(browser):
             await asyncio.sleep(random.uniform(2, 4))
             
             # Nhập nội dung
-            post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
+            # post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[contenteditable="true"]')))
+            post_box = WebDriverWait(browser, 5).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='xzsf02u x1a2a7pz x1n2onr6 x14wi4xw x9f619 x1lliihq x5yr21d xh8yej3 notranslate']")))
             await asyncio.sleep(1)
             p_tag = post_box.find_element(By.TAG_NAME, "p")
             if p_tag and p_tag.is_displayed():
@@ -2912,7 +2897,6 @@ async def post_news_feed(browser):
             
         except Exception as e:
             log_message(f"Lỗi khi lấy thông tin bài viết: {e}", logging.ERROR)
-            import traceback
             traceback.print_exc()
         
         # Xóa ảnh sau khi đăng thành công
@@ -3259,7 +3243,7 @@ async def surf_facebook(id, title, browser):
         await asyncio.sleep(random.uniform(5, 8))  # Chờ trang tải xong
     try:
         await asyncio.sleep(random.uniform(3, 5))
-        scroll_count = random.randint(7, 20)  # Số lần cuộn
+        scroll_count = random.randint(20, 30)  # Số lần cuộn
         actions = ActionChains(browser)
         while scroll_count > 0:
             # Kiểm tra flag để dừng lướt khi có tin mới từ WebSocket
@@ -3299,7 +3283,12 @@ async def surf_facebook(id, title, browser):
                 # Kiểm tra flag sau khi react
                 if stop_browsing:
                     break
-
+            elif scroll_count % 17 == 0:
+                await share_post(browser, actions)
+                await asyncio.sleep(random.uniform(3, 5))
+                # Kiểm tra flag sau khi share
+                if stop_browsing:
+                    break
             scroll_count = scroll_count - 1
 
         await asyncio.sleep(random.uniform(2, 5))
@@ -4557,80 +4546,10 @@ def kill_existing_process():
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
-def create_proxy_extension(proxy_ip, proxy_port, proxy_username, proxy_password):
-    """
-    Tạo một thư mục chứa extension proxy với thông tin xác thực.
-    Trẻ và đường dẫn đến thư mục extension
-    """
-    if sys.platform == "win32":
-        appdata_base_path = os.getenv("APPDATA")
-    elif sys.platform == "darwin":  # macOS
-
-        appdata_base_path = os.path.expanduser("~/Library/Application Support")
-    else:  # Linux và các hệ điều hành khác
-        appdata_base_path = os.path.expanduser("~/.config")
-    extension_dir = os.path.join(appdata_base_path, "proxy_extension")
-    if os.path.exists(extension_dir):
-        shutil.rmtree(extension_dir)
-    os.makedirs(extension_dir)
-    
-    manifest_json = """
-    {
-      "version": "1.0.0",
-      "manifest_version": 2,
-      "name": "Proxy Auth",
-      "permissions": [
-        "proxy",
-        "webRequest",
-        "webRequestBlocking",
-        "<all_urls>"
-      ],
-      "background": {
-        "scripts": ["background.js"]
-      },
-      "minimum_chrome_version": "22.0.0"
-    }
-    """
-
-    background_js = f"""
-    var config = {{
-      mode: "fixed_servers",
-      rules: {{
-        singleProxy: {{
-          scheme: "http",
-          host: "{proxy_ip}",
-          port: parseInt("{proxy_port}")
-        }}
-      }}
-    }};
-    
-    chrome.proxy.settings.set({{ value: config, scope: "regular" }}, function() {{}});
-    
-    function callbackFn(details) {{
-      return {{
-        authCredentials: {{
-          username: "{proxy_username}",
-          password: "{proxy_password}"
-        }}
-      }};
-    }}
-    
-    chrome.webRequest.onAuthRequired.addListener(
-      callbackFn,
-      {{ urls: ["<all_urls>"] }},
-      ['blocking']
-    );
-    """
-    with open(os.path.join(extension_dir, "manifest.json"), "w") as f:
-        f.write(manifest_json)
-    with open(os.path.join(extension_dir, "background.js"), "w") as f:
-        f.write(background_js)
-    return os.path.abspath(extension_dir)
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
     kill_existing_process()
     browser = None
-    proxy_extension_path = None
     try:
         # Kiểm tra tham số đầu vào
         if not client_user_id_chat:
@@ -4669,33 +4588,35 @@ async def main(client_user_id_chat):
         log_message(f"Đang chạy tool cho tài khoản: {facebook_username} (User ID Chat: {client_user_id_chat})", logging.INFO)
 
         chrome_options = Options()
-        # prefs = {"profile.managed_default_content_settings.images": 2}
-        # chrome_options.add_experimental_option("prefs", prefs)
-        # chrome_options.add_argument("--headless")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
+        # chrome_options.add_argument("--headless")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        # Kiểm tra và thiết lập proxy nếu có
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        chrome_options.add_argument(f"user-agent={user_agent}")
+        screen_width = 1920
+        screen_height = 1050
+        chrome_options.add_argument(f"--window-position={screen_width // 2},0")
+        chrome_options.add_argument(f"--window-size={screen_width // 2},{screen_height}")
+        service = ChromeService(version_main=122)
         proxy_ip = account_data.get("proxy_ip")
         proxy_port = account_data.get("proxy_port")
         proxy_username = account_data.get("proxy_user")
         proxy_password = account_data.get("proxy_pass")
         if proxy_ip and proxy_port and proxy_username and proxy_password:
             log_message(f"Sử dụng proxy: {proxy_ip}:{proxy_port} với user {proxy_username}", logging.INFO)
-            #Tạo extension proxy
-            proxy_extension_path = create_proxy_extension(proxy_ip, proxy_port, proxy_username, proxy_password)
-            chrome_options.add_argument(f"--load-extension={proxy_extension_path}")
+            seleniumwire_options = {
+                'proxy': {
+                    'http': f'http://{proxy_username}:{proxy_password}@{proxy_ip}:{proxy_port}',
+                    'https': f'https://{proxy_username}:{proxy_password}@{proxy_ip}:{proxy_port}',
+                    'no_proxy': 'localhost,127.0.0.1'
+                }
+            }
+            browser = webdriver.Chrome(service=service, options=chrome_options, seleniumwire_options=seleniumwire_options)
         else:
             log_message("Không sử dụng proxy, tài khoản này sử dụng IP mặc định", logging.INFO)
-        # Khởi tạo trình duyệt Chrome với các tùy chọn
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        chrome_options.add_argument(f"user-agent={user_agent}")
-        screen_width = 1920  # Adjust this value based on your screen resolution
-        screen_height = 1050  # Adjust this value based on your screen resolution
-        chrome_options.add_argument(f"--window-position={screen_width // 2},0")
-        chrome_options.add_argument(f"--window-size={screen_width // 2},{screen_height}")
-        service = webdriver.ChromeService(version_main=122)
-        browser = webdriver.Chrome(service=service, options=chrome_options)
+            browser = webdriver.Chrome(service=service, options=chrome_options)
         browser.execute_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
@@ -4836,7 +4757,6 @@ async def main(client_user_id_chat):
                 if stop_browsing and pending_posts:
                     log_message("Dừng hoạt động sau post_news_feed để xử lý WebSocket", logging.INFO)
                     continue
-                
                 # 4. Nhắn tin bạn bè
                 if not stop_browsing:
                     await list_friend(browser)
@@ -4881,21 +4801,18 @@ async def main(client_user_id_chat):
                 log_message("Đã đóng browser.", logging.INFO)
             except:
                 pass
+        await asyncio.sleep(15)  # Đảm bảo WebSocket có thời gian để dừng
         log_message("Chương trình đã kết thúc.", logging.INFO)
-        if proxy_extension_path and os.path.exists(proxy_extension_path):
-            try:
-                shutil.rmtree(proxy_extension_path)
-                log_message(f"Đã xóa thư mục proxy extension: {proxy_extension_path}", logging.INFO)
-            except Exception as e:
-                log_message(f"Lỗi khi xóa thư mục proxy extension: {e}", logging.ERROR)
 
 if __name__ == "__main__":
     # Lấy user_id_chat từ command line arguments
+    delay = random.randint(30, 60)  # Delay ngẫu nhiên từ 30-60 giây
+    print(f"[DELAY] Đợi {delay} giây trước khi khởi động toolfacebook.py...")
+    time.sleep(delay)
     if len(sys.argv) > 1:
         client_user_id_chat = sys.argv[1]
         print(f"Starting tool with user_id_chat: {client_user_id_chat}")
     else:
         print("Usage: python toolfacebook.py <user_id_chat>")
         sys.exit(1)
-    
     asyncio.run(main(client_user_id_chat))

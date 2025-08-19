@@ -5,7 +5,7 @@ a = Analysis(
     ['toolfacebook.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('C:\\Users\\trung\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\seleniumwire\\ca.crt', 'seleniumwire'), ('C:\\Users\\trung\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\seleniumwire\\ca.key', 'seleniumwire')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

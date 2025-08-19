@@ -21,7 +21,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
-import requests
+import toolfacebook_lib
 
 # Constants
 COOKIE_FILE = "fb_cookies.json"
@@ -143,18 +143,6 @@ CONTENT_POST = [
     "Công việc mơ ước của bạn không còn xa! Hãy nhanh chóng ứng tuyển vào vị trí mà chúng tôi đang tìm kiếm để phát triển bản thân trong môi trường năng động và thân thiện. Đừng bỏ lỡ cơ hội này, hãy ứng tuyển ngay hôm nay!",
     "Thời tiết hôm này thật thoải mái và dễ chịu, tâm trạng mình cũng rất tốt, cuối cùng mình cũng đạt được mục tiêu của mình. Tiếp tục cố gắng cho những điều tốt đẹp phía trước!"
 ]
-
-API_URL = "http://123.24.206.25:5000/"
-def call_api(endpoint, payload, type="data", files=None):
-    url = API_URL + endpoint
-    headers = {
-    'X-API-Key': '123456ABCDEF'
-    }
-    if type == "data":
-        response = requests.request("POST", url, headers=headers, data=payload, files=files)
-    elif type == "json":
-        response = requests.request("POST", url, headers=headers, json=payload, files=files)
-    return response
 
 # lưu cookie lại mỗi khi đăng nhập thành công
 async def save_cookies(browser):
@@ -706,7 +694,7 @@ async def read_notification(browser):
 
 # Chạy theo kịch bản: Bình luận bài tuyển dụng
 async def comment_recruitment_post(driver, user_id):
-    comment = call_api("get_comment", {'user_id': user_id})
+    comment = toolfacebook_lib.call_api("get_comment", {'user_id': user_id})
     if comment.status_code == 200:
         link_post = comment.json().get("link")
         comment = comment.json().get("comment", None)
@@ -738,76 +726,7 @@ async def comment_recruitment_post(driver, user_id):
     else:
         log_message(f"Không thể lấy comment: {comment.json().get('message', 'Unknown error')}", logging.ERROR)
 
-def close_dialog(driver):
-    try:
-        # Ấn nút "Đóng" nếu có
-        close_btn = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Đóng' and @role='button']"))
-        )
-        close_btn.click()
-    except:
-        pass
-
-    try:
-        # Ấn nút "Thoát" nếu có
-        exit_btn = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Thoát' and @role='button']"))
-        )
-        exit_btn.click()
-    except:
-        pass
-
-def get_answer(driver, group_link):
-    need_answer = False
-    answer_question_dialog = driver.find_element(
-        By.XPATH,
-        "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
-    )
-    questions = answer_question_dialog.find_elements(By.XPATH, ".//span[@class='x1lliihq x6ikm8r x10wlt62 x1n2onr6 x1j85h84']")
-    for question in questions:
-        grandparent = question.find_element(By.XPATH, "./../../../../../..")
-        answers = grandparent.find_elements(By.XPATH, ".//span[@class='x193iq5w xeuugli x13faqbe x1vvkbs x1xmvt09 x6prxxf xvq8zen x1s688f xzsf02u']")
-        how_to_answer = grandparent.find_element(By.XPATH, ".//span[@class='x193iq5w xeuugli x13faqbe x1vvkbs x1xmvt09 x1nxh6w3 x1sibtaa xo1l8bm xi81zsa']")
-        how_to_answer = how_to_answer.text if how_to_answer.text.strip() else 'Trả lời câu hỏi'
-        answer = call_api("get_answer", {
-            "group_link": group_link,
-            "question": question.text,
-            "how_to_answer": how_to_answer,
-            "answers[]": [answer.text for answer in answers]
-        })
-        if answer.status_code == 200:
-            answer = answer.json().get("answer", "")
-            time.sleep(1)
-            if answer:
-                if how_to_answer == "Trả lời câu hỏi":
-                    answer_input = grandparent.find_element(By.XPATH, ".//textarea")
-                    answer_input.click()
-                    answer_input.send_keys(answer)
-                if "nhiều" in how_to_answer:
-                    for checktext in answer.split("|"):
-                        checkbox = grandparent.find_element(
-                            By.XPATH,
-                            f"//label[.//span[text()='{checktext}']]//input[@type='checkbox']"
-                        )
-                        checkbox.click()
-                if "1" in how_to_answer:
-                    radio = grandparent.find_element(
-                        By.XPATH,
-                        f"//input[@type='radio' and @value='{answer}']"
-                    )
-                    radio.click()
-            time.sleep(1)
-        else:
-            need_answer = True
-    if need_answer:
-        close_dialog(driver)
-    else:
-        answer_question_dialog.find_element(
-            By.XPATH,
-            "//div[@aria-label='Gửi' and @role='button']"
-        ).click()
-
-# Chạy theo kịch bản: kiểm tra các bài viết chưa được phê duyệt
+# Chạy theo kịch bản: kiểm tra các nhóm đã tham gia
 async def check_joined_groups(driver, user_id):
     """Kiểm tra xem đã tham gia nhóm hay chưa."""
     driver.get("https://www.facebook.com/groups/joins")
@@ -831,22 +750,22 @@ async def check_joined_groups(driver, user_id):
             group_name = group_link.text
             group.find_element(By.XPATH, ".//div[@aria-label='Trả lời câu hỏi' and @role='button']").click()
             await asyncio.sleep(2)
-            get_answer(driver, href, group_name)        
-    call_api("update_joined_groups", {"user_id": user_id, "joined_groups[]": joined_group_links})
+            toolfacebook_lib.get_answer(driver, href, group_name)
+    toolfacebook_lib.call_api("update_joined_groups", {"user_id": user_id, "joined_groups[]": joined_group_links})
     log_message(f"Đã cập nhật danh sách nhóm đã tham gia cho user_id {user_id}: \n{'\n'.join(joined_group_links)}", logging.INFO)
 
 # Chạy bán tự động: tham gia nhóm
 async def join_group(driver, command_id, user_id, group_link = ""):
-    group_api = call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
+    group_api = toolfacebook_lib.call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
     if group_api.status_code != 200:
         log_message(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_api.json().get('message', 'Unknown error')}", logging.ERROR)
-        call_api("execute_command", {"command_id": command_id})
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
         return
     
     group_link = group_api.json().get("link", "")
     if not group_link:
         log_message(f"Không có nhóm nào để tham gia cho user_id {user_id}", logging.WARNING)
-        call_api("execute_command", {"command_id": command_id})
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
         return
     driver.get("https://www.facebook.com/" + group_link)
     # Tìm nút tham gia nhóm
@@ -856,7 +775,7 @@ async def join_group(driver, command_id, user_id, group_link = ""):
         )
     except (NoSuchElementException, TimeoutException):
         log_message(f"Không tìm thấy nút tham gia nhóm cho user_id {user_id} tại https://www.facebook.com/{group_link}", logging.ERROR)
-        call_api("execute_command", {"command_id": command_id})
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
         return
     join_button.click()
     try:
@@ -866,19 +785,19 @@ async def join_group(driver, command_id, user_id, group_link = ""):
                 "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
             ))
         )
-        get_answer(driver, group_link)
+        toolfacebook_lib.get_answer(driver, group_link)
     except (NoSuchElementException, TimeoutException):
         pass
     await asyncio.sleep(5)
     html = driver.page_source
 
-    call_api("save_html", {"user_id": user_id, "html": html}, "json")
+    toolfacebook_lib.call_api("save_html", {"user_id": user_id, "html": html}, "json")
     log_message(f"Đã gửi yêu cầu tham gia nhóm cho user_id {user_id}: {group_link}", logging.INFO)
 
     # Thông báo đã tham gia nhóm
-    call_api("execute_command", {"command_id": command_id})
+    toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
 
-# Chạy thủ công: Đăng bài lên nhóm
+# Chạy bán tự động: Đăng bài lên nhóm
 async def post_to_group(driver, command_id, group_link, content, files=None):
     driver.get("https://www.facebook.com/" + group_link)
     post_button = WebDriverWait(driver, 10).until(
@@ -904,7 +823,7 @@ async def post_to_group(driver, command_id, group_link, content, files=None):
     content_box.send_keys(content)
 
     for file_name in files or []:
-        response = call_api('get_file', {'file_name': file_name})
+        response = toolfacebook_lib.call_api('get_file', {'file_name': file_name})
 
         if response.status_code == 200:
             with open(f"Temp/{file_name}", 'wb') as f:
@@ -939,95 +858,12 @@ async def post_to_group(driver, command_id, group_link, content, files=None):
     log_message(f"Đã đăng bài viết vào nhóm {group_link} thành công!", logging.INFO)
 
     # Thông báo đã đăng xong
-    call_api('execute_command', {'command_id': command_id})
+    toolfacebook_lib.call_api('execute_command', {'command_id': command_id})
 
-def get_unapproved_posts(user_id):
-    response = call_api("get_unapproved_posts", {'user_id': user_id})
-    if response.status_code == 200:
-        return response.json()
-    return None
-
-def check_post(driver, post_ids, group_link, post_contents):
-    checked_posts = []
-    driver.get("https://www.facebook.com/" + group_link + "/my_removed_content")
-    try:
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']"
-            ))
-        )
-        posts = driver.find_elements(By.XPATH, "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']")
-        for post in posts:
-            for i in range(len(post_ids)):
-                if post_contents[i] in post.text:
-                    call_api("update_post_status", {'post_id': post_ids[i], 'status': 'Đã bị gỡ'})
-                    checked_posts.append(post_ids[i])
-                    log_message(f"✅ Đã cập nhật trạng thái bài viết {post_ids[i]}: Đã bị gỡ", logging.INFO)
-    except (NoSuchElementException, TimeoutException):
-        pass
     
-    driver.get("https://www.facebook.com/" + group_link + "/my_declined_content")
-    try:
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']"
-            ))
-        )
-        posts = driver.find_elements(By.XPATH, "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']")
-        for post in posts:
-            for i in range(len(post_ids)):
-                if post_contents[i] in post.text:
-                    call_api("update_post_status", {'post_id': post_ids[i], 'status': 'Đã bị từ chối'})
-                    checked_posts.append(post_ids[i])
-                    log_message(f"✅ Đã cập nhật trạng thái bài viết {post_ids[i]}: Đã bị từ chối", logging.INFO)
-    except (NoSuchElementException, TimeoutException):
-        pass
-
-    driver.get("https://www.facebook.com/" + group_link + "/my_posted_content")
-    try:
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']"
-            ))
-        )
-        posts = driver.find_elements(By.XPATH, "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']")
-        for post in posts:
-            for i in range(len(post_ids)):
-                if post_contents[i] in post.text:
-                    call_api("update_post_status", {'post_id': post_ids[i], 'status': 'Đã đăng thành công'})
-                    checked_posts.append(post_ids[i])
-                    log_message(f"✅ Đã cập nhật trạng thái bài viết {post_ids[i]}: Đã đăng thành công", logging.INFO)
-    except (NoSuchElementException, TimeoutException):
-        pass
-    
-    driver.get("https://www.facebook.com/" + group_link + "/my_pending_content")
-    try:
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']"
-            ))
-        )
-        posts = driver.find_elements(By.XPATH, "//div[@class='x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w x1xmf6yo x1e56ztr xzboxd6 x14l7nz5']")
-        for post in posts:
-            for i in range(len(post_ids)):
-                if post_contents[i] in post.text:
-                    call_api("update_post_status", {'post_id': post_ids[i], 'status': 'Đang chờ duyệt'})
-                    checked_posts.append(post_ids[i])
-                    log_message(f"✅ Đã cập nhật trạng thái bài viết {post_ids[i]}: Đang chờ duyệt", logging.INFO)
-    except (NoSuchElementException, TimeoutException):
-        pass
-    for post_id in post_ids:
-        if post_id not in checked_posts:
-            call_api("update_post_status", {'post_id': post_id, 'status': 'Đã đăng thành công'})
-            log_message(f"✅ Đã cập nhật trạng thái bài viết {post_id}: Đã đăng thành công", logging.INFO)
-
 # Chạy theo kịch bản: kiểm tra các bài viết chưa được phê duyệt
 async def check_unapproved_posts(driver, user_id):
-    posts = get_unapproved_posts(user_id).get('data', [])
+    posts = toolfacebook_lib.get_unapproved_posts(user_id).get('data', [])
     post_in_group = {}
     for post in posts:
         post_id = post.get('_id')['$oid']
@@ -1043,7 +879,7 @@ async def check_unapproved_posts(driver, user_id):
         post_in_group[group_link]['post_ids'].append(post_id)
         post_in_group[group_link]['post_contents'].append(post_content)
     for k, v in post_in_group.items():
-        check_post(driver, v['post_ids'], k, v['post_contents'])
+        toolfacebook_lib.check_post(driver, v['post_ids'], k, v['post_contents'])
 
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
@@ -1141,6 +977,8 @@ async def main(client_user_id_chat):
             id_fb = page_source[start:end]
             log_message(f'id_fb: {id_fb}')
 
+            # Thêm đoạn lưu id_fb vào csdl
+            toolfacebook_lib.call_api("login", {"user_id": facebook_username, "fb_id": id_fb})
         while True:
             try:    
                 # surf_facebook gốc có 3 tham số, giữ nguyên để không thay đổi logic cũ
@@ -1169,7 +1007,6 @@ async def main(client_user_id_chat):
             except:
                 pass
         log_message("Chương trình đã kết thúc.", logging.INFO)
-
 
 if __name__ == "__main__":
     # Lấy user_id_chat từ command line arguments

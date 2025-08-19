@@ -178,30 +178,6 @@ def extract_post_link(driver, post, timeout=10):
         # Trích dữ liệu từ clipboard
         return pyperclip.paste()
     except Exception as e:
-        print(f"⚠️ Không thể lấy liên kết bài viết: {e}")
-
-    return driver.current_url
-
-# Lấy đường dẫn bài viết
-def extract_post_link(driver, post, timeout=10):
-    try:
-        # Chờ nút chia sẻ trong post
-        share_button = WebDriverWait(post, timeout).until(
-            EC.element_to_be_clickable((By.XPATH, ".//span[@data-ad-rendering-role='share_button']"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", share_button)
-        time.sleep(0.5)
-        driver.execute_script("arguments[0].click();", share_button)
-
-        # Chờ nút "Sao chép liên kết"
-        copy_link_button = WebDriverWait(driver, timeout).until(
-            EC.element_to_be_clickable((By.XPATH, "//span[text()='Sao chép liên kết']/ancestor::div[@role='button']"))
-        )
-        copy_link_button.click()
-
-        # Trích dữ liệu từ clipboard
-        return pyperclip.paste()
-    except Exception as e:
         pass
 
     return driver.current_url
@@ -245,5 +221,4 @@ def check_post(driver, post_ids, group_link, post_contents, fb_id):
             except NoSuchElementException:
                 continue
             except Exception as e:
-                print(f"⚠️ Lỗi khi quét bài viết: {e}")
                 continue

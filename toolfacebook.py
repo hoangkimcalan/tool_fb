@@ -78,10 +78,10 @@ if not os.path.exists(POST_STRUCTURE_FILE):
         print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
 
 # Các hằng số khác (không thay đổi)
-WEBSOCKET_URL = "ws://localhost:4000"
-# WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
-URL_IMAGE = "http://192.168.0.116:4000"
-# URL_IMAGE = "https://socket.hungha365.com:4000"
+# WEBSOCKET_URL = "ws://localhost:4000"
+WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
+# URL_IMAGE = "http://192.168.0.116:4000"
+URL_IMAGE = "https://socket.hungha365.com:4000"
 
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
@@ -4874,6 +4874,7 @@ async def main(client_user_id_chat):
                                 log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm2222", logging.INFO)
                                 await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
                             break
+                        await check_unapproved_posts(browser, facebook_username, id_fb)
                         log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm3333", logging.INFO)
                         
                         # await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
@@ -4884,7 +4885,8 @@ async def main(client_user_id_chat):
                     stop_browsing = False  # Reset flag sau khi xử lý
                     await asyncio.sleep(random.uniform(2, 4))
                     continue
-                
+
+
                 # Thực hiện các hoạt động theo thứ tự nhưng luôn kiểm tra flag
                 # 1. Lướt Facebook
                 if not stop_browsing:
@@ -4970,26 +4972,6 @@ async def main(client_user_id_chat):
                 #     # if not stop_browsing:
                 #     #     await check_and_run_auto_crawl(browser)
                 
-                # 7.Đăng bài
-                # if not stop_browsing:
-                    # commands = toolfacebook_lib.get_commands(facebook_username)
-                    # for command in commands:
-                    #     command_id = command['_id']['$oid']
-                    #     if command['type'] == 'join_group':
-                    #         await join_group(browser, command_id, command['user_id'], command.get('params')['group_link'])
-                    #     elif command['type'] == 'post_to_group':
-                    #         await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
-                    #     break
-                    
-                    # # # Cào data thông minh sau khi lướt Facebook
-                    # # if not stop_browsing:
-                    # #     await check_and_run_auto_crawl(browser)
-                    # if not stop_browsing:
-                    #     await check_unapproved_posts(browser, facebook_username, id_fb)
-                # Kiểm tra lại flag trước khi tiếp tục
-                # if stop_browsing and pending_posts:
-                #     log_message("Dừng hoạt động sau surf_facebook để xử lý WebSocket", logging.INFO)
-                #     continue
                 
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

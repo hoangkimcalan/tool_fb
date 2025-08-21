@@ -74,10 +74,10 @@ def check_proxy(proxy_address: str, username: str = None, password: str = None):
 
 # --- How to use the function ---
 # Replace with your proxy information
-proxy_ip = "116.97.15.251"
-proxy_port = "22170"
-proxy_user = "muaproxy689ef889877d0"
-proxy_pass = "omglrlc5194ghtuy"
+proxy_ip = "42.118.161.103"
+proxy_port = "35270"
+proxy_user = "muaproxy689ef8202bc87"
+proxy_pass = "lyl1nqbxq4ghgpyu"
 
 proxy_to_check = f"{proxy_ip}:{proxy_port}"
 

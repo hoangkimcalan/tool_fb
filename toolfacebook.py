@@ -45,7 +45,6 @@ from utils import hide_process, initialize, log_message, run_as_trusted, smooth_
 import logging
 logging.getLogger('seleniumwire').setLevel(logging.WARNING)
 
-COOKIE_FILENAME = "fb_cookies.json"
 POST_STRUCTURE_FILENAME = "post_structure.json"
 
 DEFAULT_COOKIE_DATA = "{}"
@@ -56,6 +55,7 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 USER_ACCOUNTS_FILE = os.path.join(PARENT_DIR, "user_accounts.json")
+# USER_ACCOUNTS_FILE = os.path.join(BASE_DIR, "user_accounts.json")
 print(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}")
 log_message(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}", logging.INFO)
 
@@ -67,18 +67,22 @@ elif sys.platform == "darwin":  # macOS
 else:  # Linux
     appdata_path = os.path.expanduser("~/.config")
 
-# Tạo đường dẫn đầy đủ đến các file
-COOKIE_FILE = os.path.join(appdata_path, COOKIE_FILENAME)
+# POST_STRUCTURE_FILE sử dụng chung
 POST_STRUCTURE_FILE = os.path.join(appdata_path, POST_STRUCTURE_FILENAME)
 
-# Kiểm tra và tạo file fb_cookies.json
-if not os.path.exists(COOKIE_FILE):
-    print(f"File {COOKIE_FILE} not found. Creating a new one...")
-    try:
-        with open(COOKIE_FILE, "w") as f:
-            f.write(DEFAULT_COOKIE_DATA)
-    except IOError as e:
-        print(f"Error creating file {COOKIE_FILE}: {e}")
+# Hàm tạo tên file cookie riêng cho mỗi tài khoản
+def get_cookie_filename(username):
+    """Tạo tên file cookie riêng cho mỗi tài khoản"""
+    # Làm sạch username để tạo filename hợp lệ
+    safe_username = re.sub(r'[^a-zA-Z0-9@._-]', '_', username)
+    return f"fb_cookies_{safe_username}.json"
+
+def get_cookie_file_path(username):
+    """Lấy đường dẫn đầy đủ đến file cookie của tài khoản"""
+    cookie_filename = get_cookie_filename(username)
+    return os.path.join(appdata_path, cookie_filename)
+
+# COOKIE_FILE sẽ được set động trong hàm main dựa vào username hiện tại
 
 # Kiểm tra và tạo file post_structure.json
 if not os.path.exists(POST_STRUCTURE_FILE):
@@ -688,26 +692,26 @@ def delete_image(file_path):
         log_message(f"Lỗi khi xóa ảnh {file_path}: {e}", logging.ERROR)
 
 # lưu cookie lại mỗi khi đăng nhập thành công
-async def save_cookies(browser):
-    """Lưu cookies vào file JSON"""
+async def save_cookies(browser, cookie_file):
+    """Lưu cookies vào file JSON theo tài khoản"""
     cookies = browser.get_cookies()
     if cookies:
         # Lọc chỉ giữ cookie chưa hết hạn
         valid_cookies = [cookie for cookie in cookies if 'expiry' not in cookie or cookie['expiry'] > time.time()]
         
-        with open(COOKIE_FILE, "w") as file:
+        with open(cookie_file, "w") as file:
             json.dump(valid_cookies, file, indent=4)
 
-        log_message("Cookies saved successfully!")
+        log_message(f"Cookies saved successfully to {cookie_file}!")
     else:
         log_message("No cookies to save.", logging.ERROR)
 
 # load cookie từ file JSON để tránh đăng nhập lại
-async def load_cookies(browser):
-    """Nạp cookies từ file JSON"""
-    if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 0:
+async def load_cookies(browser, cookie_file):
+    """Nạp cookies từ file JSON theo tài khoản"""
+    if os.path.exists(cookie_file) and os.path.getsize(cookie_file) > 0:
         try:
-            with open(COOKIE_FILE, "r") as file:
+            with open(cookie_file, "r") as file:
                 cookies = json.load(file)
             
             # Lọc chỉ giữ cookie chưa hết hạn
@@ -724,22 +728,25 @@ async def load_cookies(browser):
 
                 # Nếu có cookie hết hạn, cập nhật lại file JSON
                 if len(valid_cookies) < len(cookies):
-                    with open(COOKIE_FILE, "w") as file:
+                    with open(cookie_file, "w") as file:
                         json.dump(valid_cookies, file, indent=4)
                     log_message("Expired cookies removed and updated JSON file.")
 
-                log_message("Valid cookies loaded successfully!")
+                log_message(f"Valid cookies loaded successfully from {cookie_file}!")
+                return True
             else:
                 log_message("All cookies have expired. Deleting cookie file...", logging.WARNING)
-                os.remove(COOKIE_FILE)
+                os.remove(cookie_file)
+                return False
 
         except json.JSONDecodeError:
             log_message("Corrupted cookie file. Deleting...", logging.ERROR)
-            os.remove(COOKIE_FILE)
+            os.remove(cookie_file)
+            return False
     return False
 
 # Hàm đăng nhập Facebook
-async def login(username, password, code_2fa, browser):
+async def login(username, password, code_2fa, browser, cookie_file):
     try:
         """Hàm đăng nhập Facebook với async/await"""
         txtUser = browser.find_element(By.ID, 'email')
@@ -755,7 +762,7 @@ async def login(username, password, code_2fa, browser):
         
         if '"userID":' in browser.page_source:
             log_message("Login successful!")
-            await save_cookies(browser)
+            await save_cookies(browser, cookie_file)
             # Reload Facebook homepage after successful login
             browser.get("https://facebook.com/")
             await asyncio.sleep(3)
@@ -4645,9 +4652,16 @@ async def post_to_group(driver, command_id, group_link, content, files=None):
         )
         add_file.click()
 
-        autoit.win_wait_active("Open")
-        autoit.control_set_text("Open", "Edit1", file_path)
-        autoit.control_click("Open", "Button1")  # Nhấn nút "Open"
+        # Tìm input file thay vì dùng autoit
+        try:
+            file_input = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"]'))
+            )
+            file_input.send_keys(file_path)
+            log_message(f"Đã upload file: {file_path}", logging.INFO)
+        except Exception as e:
+            log_message(f"Lỗi khi upload file: {e}", logging.ERROR)
+        
         time.sleep(2)
     time.sleep(6)  # Đợi một chút để file được tải lên
     # Đăng bài
@@ -4740,7 +4754,7 @@ async def main(client_user_id_chat):
         # Kiểm tra tham số đầu vào
         if not client_user_id_chat:
             return
-        initialize()
+        initialize()  # Thêm await ở đây
         #Lấy data từ file user_accounts.json
         account_data = None
         global current_account_data  # Khai báo sử dụng biến global
@@ -4776,7 +4790,7 @@ async def main(client_user_id_chat):
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
-        # chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--headless")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -4790,6 +4804,9 @@ async def main(client_user_id_chat):
         proxy_port = account_data.get("proxy_port")
         proxy_username = account_data.get("proxy_user")
         proxy_password = account_data.get("proxy_pass")
+        
+        # Khởi tạo browser với hoặc không có proxy
+        browser = None
         if proxy_ip and proxy_port and proxy_username and proxy_password:
             log_message(f"Sử dụng proxy: {proxy_ip}:{proxy_port} với user {proxy_username}", logging.INFO)
             seleniumwire_options = {
@@ -4799,8 +4816,25 @@ async def main(client_user_id_chat):
                     'no_proxy': 'localhost,127.0.0.1'
                 }
             }
-            browser = webdriver.Chrome(service=service, options=chrome_options, seleniumwire_options=seleniumwire_options)
-        else:
+            try:
+                browser = webdriver.Chrome(service=service, options=chrome_options, seleniumwire_options=seleniumwire_options)
+                # Test proxy connection
+                log_message("Testing proxy connection...", logging.INFO)
+                browser.get("https://httpbin.org/ip")
+                await asyncio.sleep(3)
+                log_message("Proxy connection successful!", logging.INFO)
+            except Exception as proxy_error:
+                log_message(f"Proxy connection failed: {proxy_error}", logging.WARNING)
+                log_message("Falling back to direct connection without proxy...", logging.INFO)
+                if browser:
+                    try:
+                        browser.quit()
+                    except:
+                        pass
+                browser = None
+        
+        # Nếu không có proxy hoặc proxy fail, sử dụng kết nối trực tiếp
+        if not browser:
             log_message("Không sử dụng proxy, tài khoản này sử dụng IP mặc định", logging.INFO)
             browser = webdriver.Chrome(service=service, options=chrome_options)
         browser.execute_script("""
@@ -4811,36 +4845,60 @@ async def main(client_user_id_chat):
             Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
         """)
-        # Lấy IP hiển thị trên trình duyệt
-        log_message("Đang lấy IP hiển thị trên trình duyệt...", logging.INFO)
-        browser.get("https://ipv4.icanhazip.com/")
-        page_content = browser.find_element(By.TAG_NAME, "pre").text
-        displayed_ip = page_content.strip()
-        print(f"IP hiển thị trên trình duyệt: {displayed_ip}")
+        
+        # Lấy IP hiển thị trên trình duyệt với retry mechanism
+        displayed_ip = "Unknown"
+        for attempt in range(3):
+            try:
+                log_message(f"Đang lấy IP hiển thị trên trình duyệt (lần thử {attempt + 1}/3)...", logging.INFO)
+                browser.get("https://ipv4.icanhazip.com/")
+                page_content = WebDriverWait(browser, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "pre"))
+                ).text
+                displayed_ip = page_content.strip()
+                log_message(f"IP hiển thị trên trình duyệt: {displayed_ip}", logging.INFO)
+                break
+            except Exception as ip_error:
+                log_message(f"Lỗi khi lấy IP (lần thử {attempt + 1}): {ip_error}", logging.WARNING)
+                if attempt == 2:  # Last attempt
+                    log_message("Không thể lấy IP sau 3 lần thử, tiếp tục với IP Unknown", logging.WARNING)
+                else:
+                    await asyncio.sleep(2)  # Wait before retry
+        
+        # Tạo đường dẫn file cookie riêng cho tài khoản này
+        cookie_file = get_cookie_file_path(facebook_username)
+        log_message(f"Sử dụng file cookie: {cookie_file}", logging.INFO)
+        
         # dang nhap tren fb
         actions = ActionChains(browser)
         browser.get("https://facebook.com")
         await asyncio.sleep(3)
         
-        if os.path.exists(COOKIE_FILE):
+        # Kiểm tra và load cookies của tài khoản này
+        if os.path.exists(cookie_file):
+            log_message(f"Tìm thấy file cookie cho tài khoản {facebook_username}", logging.INFO)
             # load_cookies trả về True/False, nên có thể dùng trực tiếp
-            if await load_cookies(browser):
+            if await load_cookies(browser, cookie_file):
                 browser.refresh()
                 await asyncio.sleep(4)
             else:
                 log_message("Tải cookies thất bại hoặc không có cookies hợp lệ. Tiến hành đăng nhập mới.", logging.INFO)
+        else:
+            log_message(f"Không tìm thấy file cookie cho tài khoản {facebook_username}", logging.INFO)
 
         # Kiểm tra nếu vẫn cần đăng nhập
         if not await is_logged_in(browser):
             log_message("Cookies không hợp lệ hoặc hết hạn, cần đăng nhập lại.")
             # Hàm login gốc không trả về giá trị, giả định nó thành công nếu không có ngoại lệ
-            await login(facebook_username, facebook_password, facebook_2fa_code, browser)
+            await login(facebook_username, facebook_password, facebook_2fa_code, browser, cookie_file)
             # Sau khi login, kiểm tra lại trạng thái đăng nhập
             await asyncio.sleep(15)  # Đợi một chút để Facebook xử lý đăng nhập
             if not await is_logged_in(browser):
                 log_message("Đăng nhập thất bại sau khi thử. Chương trình sẽ dừng lại.", logging.ERROR)
                 return
             log_message("Đăng nhập thành công.", logging.INFO)
+        else:
+            log_message(f"Đã đăng nhập thành công bằng cookies cho tài khoản {facebook_username}!", logging.INFO)
         await asyncio.sleep(3)
 
         page_source = browser.page_source

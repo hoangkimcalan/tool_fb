@@ -1,0 +1,80 @@
+{
+  "test_time": "2025-08-21 17:47:54",
+  "total_proxies": 9,
+  "working_proxies": 9,
+  "success_rate": 100.0,
+  "results": [
+    {
+      "index": 1,
+      "proxy": "42.118.161.103:35270",
+      "status": "✅ SUCCESS",
+      "response_time": 927.97,
+      "ip_address": "42.118.161.103",
+      "error": null
+    },
+    {
+      "index": 2,
+      "proxy": "1.55.143.33:27434",
+      "status": "✅ SUCCESS",
+      "response_time": 1544.15,
+      "ip_address": "1.55.143.33",
+      "error": null
+    },
+    {
+      "index": 3,
+      "proxy": "42.118.161.76:13016",
+      "status": "✅ SUCCESS",
+      "response_time": 2191.89,
+      "ip_address": "42.118.161.76",
+      "error": null
+    },
+    {
+      "index": 4,
+      "proxy": "1.54.225.88:19869",
+      "status": "✅ SUCCESS",
+      "response_time": 1118.16,
+      "ip_address": "1.54.225.88",
+      "error": null
+    },
+    {
+      "index": 5,
+      "proxy": "42.114.0.110:21556",
+      "status": "✅ SUCCESS",
+      "response_time": 2869.91,
+      "ip_address": "42.114.0.110",
+      "error": null
+    },
+    {
+      "index": 6,
+      "proxy": "1.55.143.0:24617",
+      "status": "✅ SUCCESS",
+      "response_time": 782.66,
+      "ip_address": "1.55.143.0",
+      "error": null
+    },
+    {
+      "index": 7,
+      "proxy": "1.55.143.146:33185",
+      "status": "✅ SUCCESS",
+      "response_time": 508.72,
+      "ip_address": "1.55.143.146",
+      "error": null
+    },
+    {
+      "index": 8,
+      "proxy": "42.118.161.99:27434",
+      "status": "✅ SUCCESS",
+      "response_time": 979.12,
+      "ip_address": "42.118.161.99",
+      "error": null
+    },
+    {
+      "index": 9,
+      "proxy": "42.116.47.23:13502",
+      "status": "✅ SUCCESS",
+      "response_time": 624.7,
+      "ip_address": "42.116.47.23",
+      "error": null
+    }
+  ]
+}

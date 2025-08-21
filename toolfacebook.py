@@ -78,10 +78,10 @@ if not os.path.exists(POST_STRUCTURE_FILE):
         print(f"Error creating file {POST_STRUCTURE_FILE}: {e}")
 
 # Các hằng số khác (không thay đổi)
-# WEBSOCKET_URL = "ws://localhost:4000"
-WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
-# URL_IMAGE = "http://192.168.0.116:4000"
-URL_IMAGE = "https://socket.hungha365.com:4000"
+WEBSOCKET_URL = "ws://localhost:4000"
+# WEBSOCKET_URL = "wss://socket.hungha365.com:4000"
+URL_IMAGE = "http://192.168.0.116:4000"
+# URL_IMAGE = "https://socket.hungha365.com:4000"
 
 # Cấu hình cào comment
 MAX_POSTS_TO_CRAWL = 30  # Số lượng bài mới nhất sẽ được cào comment
@@ -4864,8 +4864,19 @@ async def main(client_user_id_chat):
                         await crawl_comments_by_crm_request(browser)
                     elif pending_posts[0].get("type") == "post_to_group":
                         commands = toolfacebook_lib.get_commands(facebook_username)
-                        log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm", logging.INFO)
-                        await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
+                        print(commands)
+                        for command in commands:
+                            command_id = command['_id']['$oid']
+                            if command['type'] == 'join_group':
+                                log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm1111", logging.INFO)
+                                await join_group(browser, command_id, command['user_id'], command.get('params')['group_link'])
+                            elif command['type'] == 'post_to_group':
+                                log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm2222", logging.INFO)
+                                await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
+                            break
+                        log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm3333", logging.INFO)
+                        
+                        # await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
                     else:
                         log_message(f"Loại dữ liệu không xác định từ WebSocket: {pending_posts[0].get('type')}", logging.WARNING)
                         pending_posts.pop(0)  # Xóa dữ liệu không xác định
@@ -4881,69 +4892,69 @@ async def main(client_user_id_chat):
                     await asyncio.sleep(random.uniform(2, 4))
                     
                     # Cào data thông minh sau khi lướt Facebook
-                    if not stop_browsing:
-                        await check_and_run_auto_crawl(browser)
+                    # if not stop_browsing:
+                    #     await check_and_run_auto_crawl(browser)
                 
                 # Kiểm tra lại flag trước khi tiếp tục
                 if stop_browsing and pending_posts:
                     log_message("Dừng hoạt động sau surf_facebook để xử lý WebSocket", logging.INFO)
                     continue
                 
-                # 2. Xem video
-                if not stop_browsing:
-                    await watch_videos(browser, actions = ActionChains(browser))
+                # # 2. Xem video
+                # if not stop_browsing:
+                #     await watch_videos(browser, actions = ActionChains(browser))
                     
-                    # Cào data thông minh sau khi xem video
-                    if not stop_browsing:
-                        await check_and_run_auto_crawl(browser)
+                #     # Cào data thông minh sau khi xem video
+                #     if not stop_browsing:
+                #         await check_and_run_auto_crawl(browser)
                 
-                # Kiểm tra lại flag trước khi tiếp tục
-                if stop_browsing and pending_posts:
-                    log_message("Dừng hoạt động sau watch_videos để xử lý WebSocket", logging.INFO)
-                    continue
+                # # Kiểm tra lại flag trước khi tiếp tục
+                # if stop_browsing and pending_posts:
+                #     log_message("Dừng hoạt động sau watch_videos để xử lý WebSocket", logging.INFO)
+                #     continue
                 
-                # 3. Đăng bài (chỉ nếu có nội dung từ WebSocket)
-                if not stop_browsing:
-                    await post_news_feed(browser)
-                    await asyncio.sleep(random.uniform(2, 4))
+                # # 3. Đăng bài (chỉ nếu có nội dung từ WebSocket)
+                # if not stop_browsing:
+                #     await post_news_feed(browser)
+                #     await asyncio.sleep(random.uniform(2, 4))
                     
-                    # Cào data thông minh sau khi đăng bài
-                    if not stop_browsing:
-                        await check_and_run_auto_crawl(browser)
+                #     # Cào data thông minh sau khi đăng bài
+                #     if not stop_browsing:
+                #         await check_and_run_auto_crawl(browser)
                 
-                # Kiểm tra lại flag trước khi tiếp tục
-                if stop_browsing and pending_posts:
-                    log_message("Dừng hoạt động sau post_news_feed để xử lý WebSocket", logging.INFO)
-                    continue
+                # # Kiểm tra lại flag trước khi tiếp tục
+                # if stop_browsing and pending_posts:
+                #     log_message("Dừng hoạt động sau post_news_feed để xử lý WebSocket", logging.INFO)
+                #     continue
                 
-                # 4. Nhắn tin bạn bè
-                if not stop_browsing:
-                    await list_friend(browser)
-                    await asyncio.sleep(random.uniform(2, 4))
+                # # 4. Nhắn tin bạn bè
+                # if not stop_browsing:
+                #     await list_friend(browser)
+                #     await asyncio.sleep(random.uniform(2, 4))
                     
-                    # Cào data thông minh sau khi nhắn tin bạn bè  
-                    if not stop_browsing:
-                        await check_and_run_auto_crawl(browser)
+                #     # Cào data thông minh sau khi nhắn tin bạn bè  
+                #     if not stop_browsing:
+                #         await check_and_run_auto_crawl(browser)
                 
-                # Kiểm tra lại flag trước khi tiếp tục
-                if stop_browsing and pending_posts:
-                    log_message("Dừng hoạt động sau list_friend để xử lý WebSocket", logging.INFO)
-                    continue
+                # # Kiểm tra lại flag trước khi tiếp tục
+                # if stop_browsing and pending_posts:
+                #     log_message("Dừng hoạt động sau list_friend để xử lý WebSocket", logging.INFO)
+                #     continue
                 
-                # 5. Kết bạn
-                if not stop_browsing:
-                    # Kiểm tra trạng thái kết bạn trước khi thực hiện
-                    status = get_friend_request_status()
-                    if status['remaining'] > 0:
-                        await add_friend(browser)
-                        await asyncio.sleep(random.uniform(2, 3))
+                # # 5. Kết bạn
+                # if not stop_browsing:
+                #     # Kiểm tra trạng thái kết bạn trước khi thực hiện
+                #     status = get_friend_request_status()
+                #     if status['remaining'] > 0:
+                #         await add_friend(browser)
+                #         await asyncio.sleep(random.uniform(2, 3))
                         
-                        # Cào data thông minh sau khi kết bạn
-                        if not stop_browsing:
-                            await check_and_run_auto_crawl(browser)
-                    else:
-                        log_message(f"⏸️ Bỏ qua kết bạn - đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY}/ngày", logging.INFO)
-                        await asyncio.sleep(random.uniform(60, 120))  # Nghỉ ngắn thay vì kết bạn
+                #         # Cào data thông minh sau khi kết bạn
+                #         if not stop_browsing:
+                #             await check_and_run_auto_crawl(browser)
+                #     else:
+                #         log_message(f"⏸️ Bỏ qua kết bạn - đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY}/ngày", logging.INFO)
+                #         await asyncio.sleep(random.uniform(60, 120))  # Nghỉ ngắn thay vì kết bạn
 
                 # # 6. Bình luận thương hiệu
                 # if not stop_browsing:
@@ -4954,23 +4965,23 @@ async def main(client_user_id_chat):
                 #     # if not stop_browsing:
                 #     #     await check_and_run_auto_crawl(browser)
                 
-                # # 7.Đăng bài
+                # 7.Đăng bài
                 # if not stop_browsing:
-                #     commands = toolfacebook_lib.get_commands(facebook_username)
-                #     for command in commands:
-                #         command_id = command['_id']['$oid']
-                #         if command['type'] == 'join_group':
-                #             await join_group(browser, command_id, command['user_id'], command.get('params')['group_link'])
-                #         elif command['type'] == 'post_to_group':
-                #             await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
-                #         break
+                    # commands = toolfacebook_lib.get_commands(facebook_username)
+                    # for command in commands:
+                    #     command_id = command['_id']['$oid']
+                    #     if command['type'] == 'join_group':
+                    #         await join_group(browser, command_id, command['user_id'], command.get('params')['group_link'])
+                    #     elif command['type'] == 'post_to_group':
+                    #         await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
+                    #     break
                     
-                #     # # Cào data thông minh sau khi lướt Facebook
-                #     # if not stop_browsing:
-                #     #     await check_and_run_auto_crawl(browser)
-                #     if not stop_browsing:
-                #         await check_unapproved_posts(browser, facebook_username, id_fb)
-                # # Kiểm tra lại flag trước khi tiếp tục
+                    # # # Cào data thông minh sau khi lướt Facebook
+                    # # if not stop_browsing:
+                    # #     await check_and_run_auto_crawl(browser)
+                    # if not stop_browsing:
+                    #     await check_unapproved_posts(browser, facebook_username, id_fb)
+                # Kiểm tra lại flag trước khi tiếp tục
                 # if stop_browsing and pending_posts:
                 #     log_message("Dừng hoạt động sau surf_facebook để xử lý WebSocket", logging.INFO)
                 #     continue

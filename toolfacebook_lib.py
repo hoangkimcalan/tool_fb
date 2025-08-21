@@ -9,7 +9,7 @@ import re
 import random
 import pyperclip
 
-API_URL = "http://192.168.0.123:5000/"
+API_URL = "http://123.24.206.25:5000/"
 # Gọi API cho tool facebook
 def call_api(endpoint, payload, type="data", files=None):
     url = API_URL + endpoint

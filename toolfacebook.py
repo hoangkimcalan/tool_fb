@@ -4658,10 +4658,11 @@ async def main(client_user_id_chat):
             # Hàm login gốc không trả về giá trị, giả định nó thành công nếu không có ngoại lệ
             await login(facebook_username, facebook_password, facebook_2fa_code, browser)
             # Sau khi login, kiểm tra lại trạng thái đăng nhập
+            await asyncio.sleep(15)  # Đợi một chút để Facebook xử lý đăng nhập
             if not await is_logged_in(browser):
                 log_message("Đăng nhập thất bại sau khi thử. Chương trình sẽ dừng lại.", logging.ERROR)
                 return
-            
+            log_message("Đăng nhập thành công.", logging.INFO)
         await asyncio.sleep(3)
 
         page_source = browser.page_source

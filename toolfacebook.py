@@ -1,7 +1,6 @@
 import asyncio
 import random
 import time
-import autoit
 import json
 import os
 import re
@@ -55,9 +54,8 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# PARENT_DIR = os.path.dirname(BASE_DIR)
-# USER_ACCOUNTS_FILE = os.path.join(PARENT_DIR, "user_accounts.json")
-USER_ACCOUNTS_FILE = os.path.join(BASE_DIR, "user_accounts.json")
+PARENT_DIR = os.path.dirname(BASE_DIR)
+USER_ACCOUNTS_FILE = os.path.join(PARENT_DIR, "user_accounts.json")
 print(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}")
 log_message(f"DEBUG: USER_ACCOUNTS_FILE = {USER_ACCOUNTS_FILE}", logging.INFO)
 
@@ -4900,10 +4898,10 @@ async def main(client_user_id_chat):
                     elif pending_posts[0].get("type") == "crawl_comment_by_CRM":
                         log_message("Có yêu cầu cào comment từ CRM, dừng TẤT CẢ hoạt động và cào comment tự động từ bài mới nhất", logging.INFO)
                         await crawl_comments_by_crm_request(browser)
-                    elif pending_posts[0].get("type") == "post_to_group":
-                        commands = toolfacebook_lib.get_commands(facebook_username)
-                        log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm", logging.INFO)
-                        await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
+                    # elif pending_posts[0].get("type") == "post_to_group":
+                    #     commands = toolfacebook_lib.get_commands(facebook_username)
+                    #     log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm", logging.INFO)
+                    #     await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
                     else:
                         log_message(f"Loại dữ liệu không xác định từ WebSocket: {pending_posts[0].get('type')}", logging.WARNING)
                         pending_posts.pop(0)  # Xóa dữ liệu không xác định

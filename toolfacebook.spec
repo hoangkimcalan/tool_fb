@@ -29,11 +29,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-<<<<<<< HEAD
-    console=False,
-=======
     console=True,
->>>>>>> origin/Son_tudongdangbai2
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

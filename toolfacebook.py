@@ -1,11 +1,10 @@
 import asyncio
 import random
 import time
-
+import autoit
 import json
 import os
 import re
-import time
 import logging
 from datetime import datetime
 import os
@@ -27,6 +26,7 @@ from datetime import timedelta
 from api import create_post, create_comment, create_reply_comment
 
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.action_chains import ActionChains
@@ -36,6 +36,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException
+
+import toolfacebook_lib
 
 from utils import hide_process, initialize, log_message, run_as_trusted, smooth_scroll, type_text_input
 
@@ -587,7 +589,15 @@ async def connect_websocket():
                             # Set flag để dừng lướt và chuyển sang cào comment tự động
                             stop_browsing = True
                             log_message("Đã set flag để dừng lướt và chuyển sang cào comment tự động từ CRM", logging.INFO)
+
+                        elif data.get("type") == "post_to_group":
+                            log_message(f"Nhận được yêu cầu đăng bài lên group từ CRM", logging.INFO)
                             
+                            pending_posts.append(data)
+                            # Set flag để dừng lướt và chuyển sang cào comment tự động
+                            stop_browsing = True
+                            log_message("Đã set flag để dừng lướt và chuyển sang đăng bài lên group tự động từ CRM", logging.INFO)
+
                         elif data.get("type") == "register_success":
                             log_message("Đăng ký WebSocket thành công!", logging.INFO)
                         else:
@@ -598,8 +608,8 @@ async def connect_websocket():
                         
         except websockets.exceptions.ConnectionClosed:
             log_message("WebSocket connection bị đóng. Sẽ thử kết nối lại...", logging.WARNING)
-        except websockets.exceptions.InvalidStatusCode as e:
-            log_message(f"WebSocket status code không hợp lệ: {e}. Sẽ thử kết nối lại...", logging.ERROR)
+        except websockets.exceptions.InvalidURI as e:
+            log_message(f"WebSocket URI không hợp lệ: {e}. Sẽ thử kết nối lại...", logging.ERROR)
         except websockets.exceptions.WebSocketException as e:
             log_message(f"WebSocket error: {e}. Sẽ thử kết nối lại...", logging.ERROR)
         except Exception as e:
@@ -4541,6 +4551,170 @@ def kill_existing_process():
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
+
+# Chạy theo kịch bản: Bình luận bài tuyển dụng
+async def comment_recruitment_post(driver, user_id):
+    comment = toolfacebook_lib.call_api("get_comment", {'user_id': user_id})
+    if comment.status_code == 200:
+        link_post = comment.json().get("link")
+        comment = comment.json().get("comment", None)
+        if not comment:
+            log_message(f"Không có comment nào để xử lý cho user_id {user_id}", logging.INFO)
+            return
+        driver.get(link_post)
+        await asyncio.sleep(5)  # Chờ trang tải
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1)
+        comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Viết bình luận công khai…"]')
+        if not comment_box:
+            comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Viết câu trả lời..."]')
+        if not comment_box:
+            comment_box = driver.find_elements(By.CSS_SELECTOR, 'div[aria-label="Hãy gửi bình luận đầu tiên của bạn…"]')
+        if not comment_box:
+            return -1
+        comment_box = comment_box[0]
+        # Di chuyển đến ô bình luận
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", comment_box)
+        time.sleep(1)
+        if not comment_box.is_displayed():
+            return -1
+        pyperclip.copy(comment)
+        comment_box.send_keys(Keys.CONTROL, 'v')
+        time.sleep(1)
+        comment_box.send_keys("\n")  # Gửi bình luận
+        log_message(f"Đã lấy comment: {comment}", logging.INFO)
+    else:
+        log_message(f"Không thể lấy comment: {comment.json().get('message', 'Unknown error')}", logging.ERROR)
+
+
+# Chạy bán tự động: Đăng bài lên nhóm
+async def post_to_group(driver, command_id, group_link, content, files=None):
+    driver.get("https://www.facebook.com/" + group_link)
+    post_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "//span[text()='Bạn viết gì đi...']"
+        ))
+    )
+    post_button.click()
+    post_dialog = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((
+            By.XPATH,
+            "//div[@class='x78zum5 xdt5ytf x1n2onr6 x8n7wzh x11pth41 xvue9z']"
+        ))
+    )
+
+    content_box = WebDriverWait(post_dialog, 10).until(
+        EC.presence_of_element_located((
+            By.XPATH,
+            "//div[@aria-placeholder='Bạn viết gì đi...' or @aria-placeholder='Tạo bài viết công khai...']"
+        ))
+    )
+    content_box.send_keys(content)
+
+    for file_name in files or []:
+        response = toolfacebook_lib.call_api('get_file', {'file_name': file_name})
+
+        if response.status_code == 200:
+            with open(f"Temp/{file_name}", 'wb') as f:
+                f.write(response.content)
+            file_path = os.path.abspath(f"Temp\\{file_name}")
+        else:
+            log_message(f"❌ Lỗi khi tải file: {response.status_code} - {response.text}", logging.ERROR)
+            continue
+        add_file = driver.find_element(
+        By.XPATH,
+            ".//img[@src='https://static.xx.fbcdn.net/rsrc.php/v4/y7/r/Ivw7nhRtXyo.png']"
+        )
+        add_file.click()
+
+        autoit.win_wait_active("Open")
+        autoit.control_set_text("Open", "Edit1", file_path)
+        autoit.control_click("Open", "Button1")  # Nhấn nút "Open"
+        time.sleep(2)
+    time.sleep(6)  # Đợi một chút để file được tải lên
+    # Đăng bài
+    post_button = post_dialog.find_element(
+        By.XPATH,
+        "//div[@aria-label='Đăng']")
+    post_button.click()
+
+    # Xóa file tạm
+    for file_name in files or []:
+        try:
+            os.remove(f"Temp/{file_name}")
+        except Exception as e:
+            pass
+    log_message(f"Đã đăng bài viết vào nhóm {group_link} thành công!", logging.INFO)
+
+    # Thông báo đã đăng xong
+    toolfacebook_lib.call_api('execute_command', {'command_id': command_id})
+
+
+# Chạy bán tự động: tham gia nhóm
+async def join_group(driver, command_id, user_id, group_link = ""):
+    group_api = toolfacebook_lib.call_api("get_group_to_join", {"user_id": user_id, "group_link": group_link})
+    if group_api.status_code != 200:
+        log_message(f"Không thể lấy nhóm để tham gia cho user_id {user_id}: {group_api.json().get('message', 'Unknown error')}", logging.ERROR)
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
+        return
+    
+    group_link = group_api.json().get("link", "")
+    if not group_link:
+        log_message(f"Không có nhóm nào để tham gia cho user_id {user_id}", logging.WARNING)
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
+        return
+    driver.get("https://www.facebook.com/" + group_link)
+    # Tìm nút tham gia nhóm
+    try:
+        join_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[@role='button' and @aria-label='Tham gia nhóm']"))
+        )
+    except (NoSuchElementException, TimeoutException):
+        log_message(f"Không tìm thấy nút tham gia nhóm cho user_id {user_id} tại https://www.facebook.com/{group_link}", logging.ERROR)
+        toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
+        return
+    join_button.click()
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "//div[@class='x1n2onr6 x1ja2u2z x1afcbsf x78zum5 xdt5ytf x1a2a7pz x6ikm8r x10wlt62 x71s49j x1jx94hy xw5cjc7 x1dmpuos x1vsv7so xau1kf4 x104qc98 x15o3w11 xogydr4 x1vmz7ll x1yyrj1m x1n7qst7 xh8yej3']"
+            ))
+        )
+        toolfacebook_lib.get_answer(driver, group_link)
+    except (NoSuchElementException, TimeoutException):
+        pass
+    await asyncio.sleep(5)
+    html = driver.page_source
+
+    toolfacebook_lib.call_api("save_html", {"user_id": user_id, "html": html}, "json")
+    log_message(f"Đã gửi yêu cầu tham gia nhóm cho user_id {user_id}: {group_link}", logging.INFO)
+
+    # Thông báo đã tham gia nhóm
+    toolfacebook_lib.call_api("execute_command", {"command_id": command_id})
+
+
+# Chạy theo kịch bản: kiểm tra các bài viết chưa được phê duyệt
+async def check_unapproved_posts(driver, user_id, fb_id):
+    posts = toolfacebook_lib.get_unapproved_posts(user_id).get('data', [])
+    post_in_group = {}
+    for post in posts:
+        post_id = post.get('_id')['$oid']
+        group_link = post.get('group_link')
+        post_content = post.get('content')
+        if not group_link or not post_content:
+            continue
+        if group_link not in post_in_group:
+            post_in_group[group_link] = {
+                'post_ids': [],
+                'post_contents': []
+            }
+        post_in_group[group_link]['post_ids'].append(post_id)
+        post_in_group[group_link]['post_contents'].append(post_content)
+    for k, v in post_in_group.items():
+        toolfacebook_lib.check_post(driver, v['post_ids'], k, v['post_contents'], fb_id)
+
 # **Hàm main() để chạy chương trình**
 async def main(client_user_id_chat):
     kill_existing_process()
@@ -4644,6 +4818,9 @@ async def main(client_user_id_chat):
         websocket_task = asyncio.create_task(connect_websocket())
         log_message("🚀 Đã khởi động WebSocket task để nhận nội dung", logging.INFO)
 
+        # Thêm đoạn lưu id_fb vào csdl
+        toolfacebook_lib.call_api("login", {"user_id": facebook_username, "fb_id": id_fb, "fb_name": get_facebook_name()})
+
         while True:
             try:
                 # KIỂM TRA VÀ RESTART WEBSOCKET TASK NẾU CẦN
@@ -4685,6 +4862,10 @@ async def main(client_user_id_chat):
                     elif pending_posts[0].get("type") == "crawl_comment_by_CRM":
                         log_message("Có yêu cầu cào comment từ CRM, dừng TẤT CẢ hoạt động và cào comment tự động từ bài mới nhất", logging.INFO)
                         await crawl_comments_by_crm_request(browser)
+                    elif pending_posts[0].get("type") == "post_to_group":
+                        commands = toolfacebook_lib.get_commands(facebook_username)
+                        log_message("Có yêu cầu đăng bài trên nhóm từ CRM, dừng TẤT CẢ hoạt động và đăng bài lên nhóm", logging.INFO)
+                        await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
                     else:
                         log_message(f"Loại dữ liệu không xác định từ WebSocket: {pending_posts[0].get('type')}", logging.WARNING)
                         pending_posts.pop(0)  # Xóa dữ liệu không xác định
@@ -4763,6 +4944,36 @@ async def main(client_user_id_chat):
                     else:
                         log_message(f"⏸️ Bỏ qua kết bạn - đã đạt giới hạn {MAX_FRIEND_REQUESTS_PER_DAY}/ngày", logging.INFO)
                         await asyncio.sleep(random.uniform(60, 120))  # Nghỉ ngắn thay vì kết bạn
+
+                # # 6. Bình luận thương hiệu
+                # if not stop_browsing:
+                #     # await comment_recruitment_post(browser,facebook_username)
+                #     await asyncio.sleep(random.uniform(2, 4))
+                    
+                #     # # Cào data thông minh sau khi lướt Facebook
+                #     # if not stop_browsing:
+                #     #     await check_and_run_auto_crawl(browser)
+                
+                # # 7.Đăng bài
+                # if not stop_browsing:
+                #     commands = toolfacebook_lib.get_commands(facebook_username)
+                #     for command in commands:
+                #         command_id = command['_id']['$oid']
+                #         if command['type'] == 'join_group':
+                #             await join_group(browser, command_id, command['user_id'], command.get('params')['group_link'])
+                #         elif command['type'] == 'post_to_group':
+                #             await post_to_group(browser, command_id, command.get('params')['group_link'], command.get('params')['content'], command.get('params')['files'])
+                #         break
+                    
+                #     # # Cào data thông minh sau khi lướt Facebook
+                #     # if not stop_browsing:
+                #     #     await check_and_run_auto_crawl(browser)
+                #     if not stop_browsing:
+                #         await check_unapproved_posts(browser, facebook_username, id_fb)
+                # # Kiểm tra lại flag trước khi tiếp tục
+                # if stop_browsing and pending_posts:
+                #     log_message("Dừng hoạt động sau surf_facebook để xử lý WebSocket", logging.INFO)
+                #     continue
                 
             except Exception as err:
                 log_message(f'err:{err}', logging.ERROR)

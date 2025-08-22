@@ -2302,8 +2302,15 @@ async def share_post(browser, actions):
 
 async def watch_videos(browser, actions):
     try:
+        # Tắt tiếng trước khi vào xem video
+        browser.execute_script("document.querySelectorAll('video, audio').forEach(media => { media.muted = true; media.volume = 0; });")
+        
         browser.get("https://www.facebook.com/watch/")
         await asyncio.sleep(random.uniform(3, 6))
+        
+        # Tắt tiếng tất cả media elements sau khi trang load
+        browser.execute_script("document.querySelectorAll('video, audio').forEach(media => { media.muted = true; media.volume = 0; });")
+        
         scroll_count_video = random.randint(6, 15)  # Số lần cuộn #fix
         while scroll_count_video > 0:
             # Kiểm tra flag để dừng xem video khi có tin mới từ WebSocket
@@ -2321,6 +2328,10 @@ async def watch_videos(browser, actions):
 
             # Lọc các video đang hiển thị
             visible_videos = [video for video in video_selected if video.is_displayed()]
+            
+            # Tắt tiếng tất cả video trên trang hiện tại
+            browser.execute_script("document.querySelectorAll('video, audio').forEach(media => { media.muted = true; media.volume = 0; });")
+            
             await asyncio.sleep(random.uniform(40, 60))
 
             if visible_videos:
@@ -2354,6 +2365,9 @@ async def watch_videos(browser, actions):
                     # Sau khi like hoặc share, click vào video để lấy URL
                     actions.move_to_element(current_video).click().perform()
                     await asyncio.sleep(random.uniform(3, 5))
+                    
+                    # Tắt tiếng video sau khi click
+                    browser.execute_script("document.querySelectorAll('video, audio').forEach(media => { media.muted = true; media.volume = 0; });")
                     
                     # Lấy URL video đã tương tác
                     video_url = browser.current_url

@@ -8,7 +8,7 @@
     "note": "Anh Cả",
     "roleWebSocket": "B22616984",
     "nameFb": "Giản Vũ",
-    "to": "22773024"
+    "to": "22614471"
   },
   {
     "user_id_QLC": "22809021",
@@ -18,7 +18,7 @@
     "facebook_2fa_code": "",
     "note": "Anh Huy",
     "roleWebSocket": "B22809021",
-    "to": "22614471",
+    "to": "22773024",
     "nameFb": "Hoàng Hiếu"
   },
   {
@@ -29,7 +29,7 @@
     "facebook_2fa_code": "",
     "note": "Chị Liên",
     "roleWebSocket": "B22614471",
-    "to": "22773024",
+    "to": "22615815",
     "nameFb": "Gia Giang"
   },
   {
@@ -40,7 +40,7 @@
     "facebook_2fa_code": "",
     "note": "Lê Văn Quang Trung",
     "roleWebSocket": "B22865595",
-    "to": "22614471",
+    "to": "22615815",
     "nameFb": "Phương Nam"
   },
   {
@@ -51,7 +51,7 @@
     "facebook_2fa_code": "",
     "note": "Chị Nhạn",
     "roleWebSocket": "B22623688",
-    "to": "22773024",
+    "to": "22614471",
     "nameFb": "Anh Kim",
     "proxy_ip": "42.118.161.103",
     "proxy_port": "35270",
@@ -66,7 +66,7 @@
     "facebook_2fa_code": "",
     "note": "Hoàng Linh",
     "roleWebSocket": "B22616467",
-    "to": "22773024",
+    "to": "22614471",
     "nameFb": "Thanh Nguyễn",
     "proxy_ip": "1.55.143.33",
     "proxy_port": "27434",
@@ -81,7 +81,7 @@
     "facebook_2fa_code": "",
     "note": "Ngọc Hà",
     "roleWebSocket": "B22889226",
-    "to": "22773024",
+    "to": "22615815",
     "nameFb": "Anh Linh",
     "proxy_ip": "42.118.161.76",
     "proxy_port": "13016",
@@ -96,7 +96,7 @@
     "facebook_2fa_code": "",
     "note": "Ngô Dung",
     "roleWebSocket": "B22615833",
-    "to": "22773024",
+    "to": "22615815",
     "nameFb": "Quỳnh Quỳnh",
     "proxy_ip": "1.54.225.88",
     "proxy_port": "19869",
@@ -111,7 +111,7 @@
     "facebook_2fa_code": "",
     "note": "A Hán",
     "roleWebSocket": "B22773024",
-    "to": "22773024",
+    "to": "22614471",
     "nameFb": "Trang Minh",
     "proxy_ip": "42.114.0.110",
     "proxy_port": "21556",
@@ -156,7 +156,7 @@
     "facebook_2fa_code": "",
     "note": "Lưu Thị Thư",
     "roleWebSocket": "B22833463",
-    "to": "22773024",
+    "to": "22615815",
     "nameFb": "Bàng Tiến Thành",
     "proxy_ip": "42.118.161.99",
     "proxy_port": "27434",
@@ -171,7 +171,7 @@
     "facebook_2fa_code": "",
     "note": "Bích Ngọc",
     "roleWebSocket": "B22814414",
-    "to": "22773024",
+    "to": "22615815",
     "nameFb": "Mộc Hạ",
     "proxy_ip": "42.116.47.23",
     "proxy_port": "13502",
@@ -187,7 +187,7 @@
     "note": "Lê Thùy Dung",
     "roleWebSocket": "B22613811",
     "nameFb": "Minh Anh",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22613816",
@@ -198,7 +198,7 @@
     "note": "Nguyễn Thu Trang",
     "roleWebSocket": "B22613816",
     "nameFb": "Thu Hoài",
-    "to": "22773024"
+    "to": "22614471"
   },
   {
     "user_id_QLC": "22617734",
@@ -209,7 +209,7 @@
     "note": "Nguyễn Thị Linh Chi",
     "roleWebSocket": "B22617734",
     "nameFb": "Vũ Thị Trinh",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22891672",
@@ -231,7 +231,7 @@
     "note": "Bàng Tiến Thành",
     "roleWebSocket": "B22856008",
     "nameFb": "Hà Hưng",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22858638",
@@ -242,7 +242,7 @@
     "note": "Phạm Đức Huy",
     "roleWebSocket": "B22858638",
     "nameFb": "Ngọc Nguyễn",
-    "to": "22773024"
+    "to": "22614471"
   },
   {
     "user_id_QLC": "22889521",
@@ -253,7 +253,7 @@
     "note": "Hoàng Thị Ngọc Mai",
     "roleWebSocket": "B22889521",
     "nameFb": "Trần Nguyên",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22865616",
@@ -297,7 +297,7 @@
     "note": "Nguyễn Huyền Ngọc",
     "roleWebSocket": "B22791406",
     "nameFb": "Tú Uyên",
-    "to": "22773024"
+    "to": "22614471"
   },
   {
     "user_id_QLC": "22846622",
@@ -330,7 +330,7 @@
     "note": "Nguyễn Thị Bình",
     "roleWebSocket": "B22615336",
     "nameFb": "Vân Vũ",
-    "to": "22773024"
+    "to": "22614471"
   },
   {
     "user_id_QLC": "22615347",
@@ -341,7 +341,7 @@
     "note": "Trần Mạnh Duy",
     "roleWebSocket": "B22615347",
     "nameFb": "Nguyễn Văn An",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22775957",
@@ -363,7 +363,7 @@
     "note": "Nguyễn Mạnh Hùng",
     "roleWebSocket": "B22839858",
     "nameFb": "Hàn Thiên My",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22846658",
@@ -396,7 +396,7 @@
     "note": "Đinh Đức Hiếu",
     "roleWebSocket": "B22862103",
     "nameFb": "Linh Nhi",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22865594",
@@ -418,7 +418,7 @@
     "note": "Nguyễn Hoàng Long",
     "roleWebSocket": "B22865598",
     "nameFb": "Phương Bình",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22865602",
@@ -440,7 +440,7 @@
     "note": "Lê Thị Thùy",
     "roleWebSocket": "B22636101",
     "nameFb": "Trang Trịnh",
-    "to": "22773024"
+    "to": "22615815"
   },
   {
     "user_id_QLC": "22789191",
@@ -451,6 +451,6 @@
     "note": "Lại Thị Nhàn",
     "roleWebSocket": "B22789191",
     "nameFb": "Tiến Thành",
-    "to": "22858640"
+    "to": "22773024"
   }
 ]

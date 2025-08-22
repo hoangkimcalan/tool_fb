@@ -53,8 +53,8 @@
     "roleWebSocket": "B22623688",
     "to": "22773024",
     "nameFb": "Anh Kim",
-    "proxy_ip": "42.112.150.3",
-    "proxy_port": "13502",
+    "proxy_ip": "42.118.161.103",
+    "proxy_port": "35270",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -68,10 +68,10 @@
     "roleWebSocket": "B22616467",
     "to": "22773024",
     "nameFb": "Thanh Nguyễn",
-    "proxy_ip": "116.97.15.251",
-    "proxy_port": "22170",
-    "proxy_user": "muaproxy689ef889877d0",
-    "proxy_pass": "omglrlc5194ghtuy"
+    "proxy_ip": "1.55.143.33",
+    "proxy_port": "27434",
+    "proxy_user": "muaproxy689ef8202bc87",
+    "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
   {
     "user_id_QLC": "22889226",
@@ -83,8 +83,8 @@
     "roleWebSocket": "B22889226",
     "to": "22773024",
     "nameFb": "Anh Linh",
-    "proxy_ip": "42.118.161.238",
-    "proxy_port": "27434",
+    "proxy_ip": "42.118.161.76",
+    "proxy_port": "13016",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -98,8 +98,8 @@
     "roleWebSocket": "B22615833",
     "to": "22773024",
     "nameFb": "Quỳnh Quỳnh",
-    "proxy_ip": "42.118.161.133",
-    "proxy_port": "33185",
+    "proxy_ip": "1.54.225.88",
+    "proxy_port": "19869",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -113,8 +113,8 @@
     "roleWebSocket": "B22773024",
     "to": "22773024",
     "nameFb": "Trang Minh",
-    "proxy_ip": "42.118.161.134",
-    "proxy_port": "24617",
+    "proxy_ip": "42.114.0.110",
+    "proxy_port": "21556",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -128,8 +128,8 @@
     "roleWebSocket": "B22894754",
     "to": "22773024",
     "nameFb": "Trịnh Hữu",
-    "proxy_ip": "42.112.150.0",
-    "proxy_port": "21556",
+    "proxy_ip": "1.55.143.0",
+    "proxy_port": "24617",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -143,8 +143,8 @@
     "roleWebSocket": "B22615815",
     "to": "22773024",
     "nameFb": "Phương Lê",
-    "proxy_ip": "42.118.161.235",
-    "proxy_port": "19869",
+    "proxy_ip": "1.55.143.146",
+    "proxy_port": "33185",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -158,8 +158,8 @@
     "roleWebSocket": "B22833463",
     "to": "22773024",
     "nameFb": "Bàng Tiến Thành",
-    "proxy_ip": "42.118.161.135",
-    "proxy_port": "13016",
+    "proxy_ip": "42.118.161.99",
+    "proxy_port": "27434",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },
@@ -173,8 +173,8 @@
     "roleWebSocket": "B22814414",
     "to": "22773024",
     "nameFb": "Mộc Hạ",
-    "proxy_ip": "42.112.150.34",
-    "proxy_port": "27434",
+    "proxy_ip": "42.116.47.23",
+    "proxy_port": "13502",
     "proxy_user": "muaproxy689ef8202bc87",
     "proxy_pass": "lyl1nqbxq4ghgpyu"
   },

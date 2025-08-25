@@ -4589,6 +4589,40 @@ def kill_existing_process():
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
+def check_proxy_connection(proxy_ip, proxy_port, proxy_username, proxy_password, timeout=10):
+    """Kiểm tra proxy có hoạt động không"""
+    try:
+        import requests
+        
+        proxy_url = f"http://{proxy_username}:{proxy_password}@{proxy_ip}:{proxy_port}"
+        proxies = {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+        
+        log_message(f"Đang kiểm tra proxy: {proxy_ip}:{proxy_port}...", logging.INFO)
+        
+        # Test với httpbin.org 
+        response = requests.get('http://httpbin.org/ip', proxies=proxies, timeout=timeout)
+        
+        if response.status_code == 200:
+            proxy_ip_response = response.json().get('origin', '')
+            log_message(f"✅ Proxy hoạt động tốt! IP: {proxy_ip_response}", logging.INFO)
+            return True
+        else:
+            log_message(f"❌ Proxy trả về status code: {response.status_code}", logging.WARNING)
+            return False
+            
+    except requests.exceptions.ConnectTimeout:
+        log_message(f"❌ Proxy timeout sau {timeout}s", logging.WARNING)
+        return False
+    except requests.exceptions.ProxyError as e:
+        log_message(f"❌ Lỗi proxy: {e}", logging.WARNING)
+        return False
+    except Exception as e:
+        log_message(f"❌ Lỗi khi kiểm tra proxy: {e}", logging.WARNING)
+        return False
+
 
 # Chạy theo kịch bản: Bình luận bài tuyển dụng
 async def comment_recruitment_post(driver, user_id):
@@ -4819,10 +4853,26 @@ async def main(client_user_id_chat):
         proxy_username = account_data.get("proxy_user")
         proxy_password = account_data.get("proxy_pass")
         
-        # Khởi tạo browser với hoặc không có proxy
+        # Kiểm tra và khởi tạo browser với hoặc không có proxy
         browser = None
+        use_proxy = False
+        
+        # Kiểm tra proxy trước khi sử dụng
         if proxy_ip and proxy_port and proxy_username and proxy_password:
-            log_message(f"Sử dụng proxy: {proxy_ip}:{proxy_port} với user {proxy_username}", logging.INFO)
+            log_message(f"Thông tin proxy: {proxy_ip}:{proxy_port} với user {proxy_username}", logging.INFO)
+            
+            # Kiểm tra proxy có hoạt động không
+            if check_proxy_connection(proxy_ip, proxy_port, proxy_username, proxy_password):
+                use_proxy = True
+                log_message("Proxy đã được xác nhận hoạt động, sẽ sử dụng proxy", logging.INFO)
+            else:
+                log_message("Proxy không hoạt động, sẽ sử dụng IP mặc định", logging.WARNING)
+        else:
+            log_message("Không có thông tin proxy đầy đủ, sử dụng IP mặc định", logging.INFO)
+        
+        # Khởi tạo browser
+        if use_proxy:
+            log_message(f"Khởi tạo browser với proxy: {proxy_ip}:{proxy_port}", logging.INFO)
             seleniumwire_options = {
                 'proxy': {
                     'http': f'http://{proxy_username}:{proxy_password}@{proxy_ip}:{proxy_port}',
@@ -4832,25 +4882,21 @@ async def main(client_user_id_chat):
             }
             try:
                 browser = webdriver.Chrome(service=service, options=chrome_options, seleniumwire_options=seleniumwire_options)
-                # Test proxy connection
-                log_message("Testing proxy connection...", logging.INFO)
-                browser.get("https://httpbin.org/ip")
-                await asyncio.sleep(3)
-                log_message("Proxy connection successful!", logging.INFO)
-            except Exception as proxy_error:
-                log_message(f"Proxy connection failed: {proxy_error}", logging.WARNING)
-                log_message("Falling back to direct connection without proxy...", logging.INFO)
-                if browser:
-                    try:
-                        browser.quit()
-                    except:
-                        pass
+                log_message("✅ Khởi tạo browser với proxy thành công!", logging.INFO)
+            except Exception as browser_error:
+                log_message(f"❌ Lỗi khi khởi tạo browser với proxy: {browser_error}", logging.ERROR)
+                log_message("Fallback sang IP mặc định...", logging.INFO)
                 browser = None
         
-        # Nếu không có proxy hoặc proxy fail, sử dụng kết nối trực tiếp
+        # Nếu không dùng proxy hoặc proxy fail, sử dụng kết nối trực tiếp  
         if not browser:
-            log_message("Không sử dụng proxy, tài khoản này sử dụng IP mặc định", logging.INFO)
-            browser = webdriver.Chrome(service=service, options=chrome_options)
+            log_message("Khởi tạo browser với IP mặc định", logging.INFO)
+            try:
+                browser = webdriver.Chrome(service=service, options=chrome_options)
+                log_message("✅ Khởi tạo browser với IP mặc định thành công!", logging.INFO)
+            except Exception as browser_error:
+                log_message(f"❌ Lỗi nghiêm trọng khi khởi tạo browser: {browser_error}", logging.ERROR)
+                return
         browser.execute_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});

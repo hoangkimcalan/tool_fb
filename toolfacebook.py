@@ -114,7 +114,7 @@ current_account_data = None
 # Biến đếm số lần kết bạn và quản lý thời gian
 friend_request_count = 0
 friend_request_date = None
-MAX_FRIEND_REQUESTS_PER_DAY = 30
+MAX_FRIEND_REQUESTS_PER_DAY = 10
 
 # Biến global để theo dõi thời gian cào comment tự động
 last_auto_crawl_time = None

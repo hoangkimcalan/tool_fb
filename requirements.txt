@@ -3,4 +3,5 @@ webdriver-manager==4.0.1
 pyperclip==1.8.2
 colorlog==6.7.0
 pywin32==310
-asyncio 
+asyncio
+websockets 
